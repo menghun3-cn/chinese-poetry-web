@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
-import { basename, dirname, join, relative, sep } from 'node:path'
+import { basename, join, relative, sep } from 'node:path'
 
 const root = process.cwd()
 const sourceRoot = join(root, 'data', 'chinese-poetry')

@@ -1,0 +1,7 @@
+node_modules
+dist
+.vite
+coverage
+public/poetry-data
+*.local
+.DS_Store

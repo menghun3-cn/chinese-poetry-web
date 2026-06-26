@@ -9,7 +9,7 @@
       </StateNotice>
       <div v-else class="relative flex flex-1 overflow-hidden">
         <aside class="absolute inset-y-0 left-0 z-30 flex flex-col overflow-hidden border-r border-[var(--color-border)] bg-[var(--color-surface)] shadow-lg transition-all duration-300 ease-out"
-          :class="showSidebar ? 'w-[340px] lg:w-[380px]' : 'w-0 border-r-0 shadow-none'">
+          :class="showSidebar ? 'w-[280px] lg:w-[320px]' : 'w-0 border-r-0 shadow-none'">
           <div class="flex shrink-0 items-center justify-between border-b border-[var(--color-border)] px-3 py-2.5">
             <span class="text-xs font-medium text-[var(--color-text-secondary)]">篇目（{{ store.filteredItems.length }}）</span>
             <AppButton variant="secondary" size="sm" @click="showSidebar = false"><X class="size-3.5" /></AppButton>
@@ -17,12 +17,12 @@
           <PoetryList class="flex-1" />
         </aside>
         <div class="flex min-w-0 flex-1 flex-col">
-          <header class="flex shrink-0 items-center gap-2 border-b border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2">
+          <header class="flex shrink-0 items-center gap-2 border-b border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1.5">
             <button class="flex size-8 items-center justify-center rounded-lg text-[var(--color-text-muted)] hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text)]"
               :title="showSidebar ? '收起列表' : '展开列表'" @click="showSidebar = !showSidebar">
               <PanelLeftOpen v-if="!showSidebar" class="size-4" /><PanelLeftClose v-else class="size-4" />
             </button>
-            <div class="min-w-0 flex-1">
+            <div class="min-w-0 flex-1 text-center sm:text-left">
               <h1 class="truncate text-sm font-semibold leading-tight">{{ store.selectedItem?.title }}</h1>
               <p class="truncate text-[11px] text-[var(--color-text-muted)]">{{ store.selectedItem?.dynasty }} · {{ store.selectedItem?.author }} · {{ store.selectedItem?.collection }}</p>
             </div>
@@ -35,7 +35,7 @@
             </div>
           </header>
           <PoetryReaderFullViewport class="flex-1" />
-          <nav class="flex shrink-0 items-center justify-between border-t border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2">
+          <nav class="flex shrink-0 items-center justify-between border-t border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1.5">
             <button class="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-[var(--color-text-secondary)] transition hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text)] disabled:opacity-30 disabled:pointer-events-none"
               :disabled="!prevItem" @click="navigateTo(prevItem!.id)">
               <ChevronLeft class="size-3.5" /><span class="hidden sm:inline truncate max-w-[120px]">{{ prevItem?.title || '无' }}</span>
@@ -66,7 +66,7 @@
   </div>
 </template>
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { BookMarked, ChevronLeft, ChevronRight, Copy, CopyCheck, List, PanelLeftClose, PanelLeftOpen, Star, X } from 'lucide-vue-next'
 import type { PoetryItem } from '@/types/poetry'
 import PoetryFiltersCompact from '@/components/PoetryFiltersCompact.vue'
@@ -85,6 +85,11 @@ onMounted(() => {
   const mql = window.matchMedia('(max-width: 1023px)')
   showSidebar.value = !mql.matches
   mql.addEventListener('change', (e) => { if (!e.matches) showSidebar.value = true })
+  // 键盘快捷键：左右方向键翻页
+  window.addEventListener('keydown', handleKeydown)
+})
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleKeydown)
 })
 const currentIndex = computed(() => store.filteredItems.findIndex((item) => item.id === store.selectedId))
 const prevItem = computed<PoetryItem | null>(() => { const idx = currentIndex.value; return idx > 0 ? store.filteredItems[idx - 1] : null })
@@ -92,6 +97,16 @@ const nextItem = computed<PoetryItem | null>(() => { const idx = currentIndex.va
 const isFavorite = computed(() => store.selectedItem ? store.favorites.includes(store.selectedItem.id) : false)
 function navigateTo(id: string) { store.selectItem(id) }
 function toggleCollectionList() { showCollections.value = !showCollections.value }
+function handleKeydown(e: KeyboardEvent) {
+  if (e.key === 'ArrowLeft') {
+    const prev = prevItem.value
+    if (prev) { e.preventDefault(); store.selectItem(prev.id) }
+  } else if (e.key === 'ArrowRight') {
+    const next = nextItem.value
+    if (next) { e.preventDefault(); store.selectItem(next.id) }
+  }
+}
+
 async function copyPoem() {
   const item = store.selectedItem; if (!item) return
   const text = item.title + '\n' + item.dynasty + ' \u00b7 ' + item.author + '\n\n' + item.paragraphs.join('\n')

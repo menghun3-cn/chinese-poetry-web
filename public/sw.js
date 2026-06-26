@@ -4,7 +4,7 @@
 const CACHE_NAME = "poetry-cache-v1"
 const PRECACHE_URLS = [
   "/poetry-data/meta.json",
-  "/poetry-data/optimized-index.json"
+  "/poetry-data/index.overview.json"
 ]
 
 // 安装：预缓存关键数据

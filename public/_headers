@@ -1,18 +1,13 @@
+# Cloudflare Pages _headers
+# 静态诗词数据（一年不可变缓存）
 /poetry-data/*
   Cache-Control: public, max-age=31536000, immutable
   Access-Control-Allow-Origin: *
 
+# 构建产物的 JS/CSS 资源
 /assets/*
   Cache-Control: public, max-age=31536000, immutable
 
-/*.json
-  Cache-Control: public, max-age=31536000, immutable
-
-/poetry-data/meta.json
-  Cache-Control: public, max-age=31536000, immutable
-
-/poetry-data/index.json
-  Cache-Control: public, max-age=31536000, immutable
-
+# SPA 页面（不缓存 HTML，确保始终获取最新版本）
 /*.html
   Cache-Control: public, max-age=0, must-revalidate

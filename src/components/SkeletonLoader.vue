@@ -9,7 +9,7 @@
         <circle cx="28" cy="22" r="2" fill="var(--color-primary)" />
       </svg>
       <div>
-        <p class="loader-title">??????</p>
+        <p class="loader-title">中华诗词典藏</p>
         <p class="loader-subtitle">Chinese Poetry Archive</p>
       </div>
     </div>
@@ -22,7 +22,7 @@
     <!-- ??? -->
     <div class="loader-message">
       <span class="loader-dot" />
-      <span>??????&hellip;</span>
+      <span>正在加载索引&hellip;</span>
       <span class="loader-percent">{{ Math.round(Math.min(progress, 100)) }}%</span>
     </div>
 
@@ -42,7 +42,7 @@
 
     <!-- ?? -->
     <p class="loader-footer">
-      ??????????????????
+      全唐诗 · 全宋诗 · 全宋词 · 元曲 · 38万+ 首
     </p>
   </div>
 </template>

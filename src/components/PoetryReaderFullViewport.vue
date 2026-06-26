@@ -6,7 +6,7 @@
         <div v-if="item" :key="item.id" ref="poemCardRef" class="reader-card">
           <div class="reader-header">
             <h2 class="reader-title">{{ item.title }}</h2>
-            <p class="reader-meta">{{ item.dynasty }} ? {{ item.author }}</p>
+            <p class="reader-meta">{{ item.dynasty }} · {{ item.author }}</p>
           </div>
           <div ref="poemBodyRef" class="reader-body">
             <p v-for="(line, index) in item.paragraphs" :key="'l' + index" class="reader-line" :class="index === 0 ? 'reader-line-first' : ''">{{ line }}</p>
@@ -20,15 +20,15 @@
     </div>
     <Transition name="fade">
       <div v-if="loadingDetail" class="reader-loading">
-        <svg class="reader-spinner" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 11-6.219-8.56" /></svg>
-        ???...
+        <svg class="reader-spinner" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 11-6.219-8.56"/></svg>
+        加载中...
       </div>
     </Transition>
     <div v-if="!item" class="reader-empty">
       <div class="reader-empty-icon">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="size-12"><path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>
       </div>
-      <p class="reader-empty-text">????????????</p>
+      <p class="reader-empty-text">请选择一首诗词开始阅读</p>
     </div>
   </div>
 </template>
@@ -101,7 +101,7 @@ watch(() => store.selectedId, async (newId) => {
 <style scoped>
 .reader-wrapper { position:relative; display:flex; flex:1; flex-direction:column; overflow:hidden; background:linear-gradient(135deg,#f8f6f0 0%,#f0ebe1 50%,#e8e0d0 100%); }
 .reader-bg { position:absolute; inset:0; opacity:0.03; background-image:radial-gradient(circle at 10% 20%,rgba(139,90,43,0.3) 0%,transparent 50%),radial-gradient(circle at 90% 80%,rgba(139,90,43,0.2) 0%,transparent 50%),radial-gradient(circle at 50% 50%,rgba(139,90,43,0.05) 0%,transparent 70%); pointer-events:none; }
-.reader-container { position:relative; display:flex; flex:1; flex-direction:column; align-items:center; justify-content:center; overflow:hidden; padding:1.5rem 1rem; min-height:0; }
+.reader-container { position:relative; display:flex; flex:1; flex-direction:column; align-items:center; justify-content:center; overflow-y:auto; padding:1.5rem 1rem; min-height:0; }
 @media (min-width:640px){ .reader-container{ padding:1.5rem 2rem; } }
 .reader-card { position:relative; display:flex; width:100%; max-width:42rem; flex-direction:column; overflow:hidden; border-radius:1rem; border:1px solid rgba(255,255,255,0.6); background:rgba(255,255,255,0.7); padding:1.25rem 1.5rem; box-shadow:0 4px 24px rgba(0,0,0,0.05); backdrop-filter:blur(8px); max-height:100%; }
 @media (min-width:640px){ .reader-card{ padding:1.5rem 2.5rem; } }

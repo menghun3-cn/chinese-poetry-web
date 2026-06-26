@@ -561,6 +561,26 @@ export const usePoetryStore = defineStore('poetry', () => {
   }
 })
 
+
+function buildItems(entries: any[]): PoetryItem[] {
+  return entries.map(function(e: any) {
+    return {
+      id: e.id,
+      title: e.t || "无题",
+      author: e.a || "佚名",
+      dynasty: e.d || "",
+      collection: "",
+      collectionId: e.c || "",
+      rhythmic: e.r || "",
+      tags: e.tg || [],
+      paragraphs: [],
+      excerpt: e.e || "",
+      length: e.l || 0,
+      sourcePath: e.sp || "",
+    }
+  })
+}
+
 function normalize(value: string | undefined) {
   return (value ?? '').trim().toLocaleLowerCase('zh-CN')
 }

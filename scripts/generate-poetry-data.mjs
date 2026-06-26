@@ -135,7 +135,7 @@ writeFileSync(join(outputDir, 'meta.json'), JSON.stringify({
   sourceRepository: 'https://github.com/menghun3-cn/chinese-poetry.git',
   total: allItems.length,
   collections: collectionsPayload,
-}) + '\\n', 'utf8')
+}) + '\n', 'utf8')
 console.log('已生成 meta.json')
 
 // ── 输出 2: index.overview.json（20K 概览采样） ──
@@ -158,7 +158,7 @@ for (const collection of collections) {
 }
 // 混排打散
 shuffleArray(overviewItems)
-writeFileSync(join(outputDir, 'index.overview.json'), JSON.stringify(overviewItems.map(toIndexEntry)) + '\\n', 'utf8')
+writeFileSync(join(outputDir, 'index.overview.json'), JSON.stringify(overviewItems.map(toIndexEntry)) + '\n', 'utf8')
 console.log('已生成 index.overview.json: ' + overviewItems.length + ' 条概览')
 
 // 输出内联概览文件（前 2000 条，用于构建时注入 index.html）
@@ -180,19 +180,19 @@ for (const collection of collections) {
 
   if (items.length <= INDEX_CHUNK_SIZE) {
     // 小文集：单文件
-    writeFileSync(join(outputDir, 'index.' + collection.id + '.json'), JSON.stringify(items.map(toIndexEntry)) + '\\n', 'utf8')
+    writeFileSync(join(outputDir, 'index.' + collection.id + '.json'), JSON.stringify(items.map(toIndexEntry)) + '\n', 'utf8')
     totalIndexChunks++
   } else {
     // 大文集：分片
     for (let i = 0; i < items.length; i += INDEX_CHUNK_SIZE) {
       const chunk = items.slice(i, i + INDEX_CHUNK_SIZE)
       const chunkIdx = Math.floor(i / INDEX_CHUNK_SIZE)
-      writeFileSync(join(outputDir, 'index.' + collection.id + '.' + chunkIdx + '.json'), JSON.stringify(chunk.map(toIndexEntry)) + '\\n', 'utf8')
+      writeFileSync(join(outputDir, 'index.' + collection.id + '.' + chunkIdx + '.json'), JSON.stringify(chunk.map(toIndexEntry)) + '\n', 'utf8')
       totalIndexChunks++
     }
     // 写入分片元数据文件
     const totalChunks = Math.ceil(items.length / INDEX_CHUNK_SIZE)
-    writeFileSync(join(outputDir, 'index.' + collection.id + '.meta.json'), JSON.stringify({ chunks: totalChunks, total: items.length, chunkSize: INDEX_CHUNK_SIZE }) + '\\n', 'utf8')
+    writeFileSync(join(outputDir, 'index.' + collection.id + '.meta.json'), JSON.stringify({ chunks: totalChunks, total: items.length, chunkSize: INDEX_CHUNK_SIZE }) + '\n', 'utf8')
   }
 }
 console.log('文集索引分片数: ' + totalIndexChunks)
@@ -210,7 +210,7 @@ for (const collection of collections) {
     const chunkIdx = Math.floor(i / DETAILS_CHUNK_SIZE)
     writeFileSync(
       join(detailsDir, collection.id + '-' + chunkIdx + '.json'),
-      JSON.stringify(chunk.map(item => ({ id: item.id, paragraphs: item.paragraphs }))) + '\\n',
+      JSON.stringify(chunk.map(item => ({ id: item.id, paragraphs: item.paragraphs }))) + '\n',
       'utf8'
     )
     detailChunks++
@@ -305,7 +305,7 @@ function normalizeItem(rawItem, collection, file, index) {
 }
 
 function getTitle(rawItem, collection, index) {
-  return pickString(rawItem.title, rawItem.rhythmic, rawItem.chapter && rawItem.section ? rawItem.chapter + ' \\u00b7 ' + rawItem.section : undefined) || collection.name + '选篇 ' + (index + 1)
+  return pickString(rawItem.title, rawItem.rhythmic, rawItem.chapter && rawItem.section ? rawItem.chapter + ' \· ' + rawItem.section : undefined) || collection.name + '选篇 ' + (index + 1)
 }
 
 function getParagraphs(rawItem) {
@@ -315,8 +315,8 @@ function getParagraphs(rawItem) {
       return candidate.map((line) => (typeof line === 'string' ? line.trim() : '')).filter(Boolean).slice(0, 24)
     }
     if (typeof candidate === 'string') {
-      return candidate.split(/\\r?\\n|\\u3002/).map((line) => line.trim()).filter(Boolean)
-        .map((line) => (line.endsWith('\\u3002') || line.endsWith('\\uff01') || line.endsWith('\\uff1f') ? line : line + '\\u3002'))
+      return candidate.split(/\\r?\\n|\。/).map((line) => line.trim()).filter(Boolean)
+        .map((line) => (line.endsWith('\。') || line.endsWith('\！') || line.endsWith('\？') ? line : line + '\。'))
         .slice(0, 24)
     }
   }

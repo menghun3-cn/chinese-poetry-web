@@ -1,34 +1,43 @@
-﻿import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 
 import { usePoetryStore } from '@/stores/poetry'
 import { useTagsStore } from '@/stores/tags'
-import type { PoetryCatalog, PoetryItem } from '@/types/poetry'
+import type { PoetryCatalog } from '@/types/poetry'
 
-function createItem(patch: Partial<PoetryItem>): PoetryItem {
+/** 创建一个 IndexEntry（压缩格式，单字母字段） */
+function createEntry(patch: {
+  id?: string
+  title?: string
+  author?: string
+  dynasty?: string
+  collectionId?: string
+  tags?: string[]
+  excerpt?: string
+}) {
   return {
     id: patch.id ?? 'item-1',
-    title: patch.title ?? '题名',
-    author: patch.author ?? '佚名',
-    dynasty: patch.dynasty ?? '宋',
-    collection: patch.collection ?? '宋词',
-    collectionId: patch.collectionId ?? 'song-ci',
-    rhythmic: patch.rhythmic,
-    tags: patch.tags ?? [],
-    paragraphs: patch.paragraphs ?? ['测试句'],
-    excerpt: patch.excerpt ?? '测试句',
-    length: patch.length ?? 3,
-    sourcePath: patch.sourcePath ?? 'mock.json',
+    t: patch.title ?? '题名',
+    a: patch.author ?? '佚名',
+    d: patch.dynasty ?? '宋',
+    c: patch.collectionId ?? 'song-ci',
+    tg: patch.tags ?? [],
+    r: '',
+    e: patch.excerpt ?? '测试句',
+    l: 3,
+    sp: 'mock.json',
   }
 }
 
-function createCatalog(items: PoetryItem[]): PoetryCatalog {
+function createCatalog(): PoetryCatalog {
   return {
     generatedAt: '2026-06-26T00:00:00.000Z',
     sourceRepository: 'mock',
-    total: items.length,
-    collections: [],
-    items,
+    total: 3,
+    collections: [
+      { id: 'song-ci', name: '宋词', dynasty: '宋', description: '', count: 3, sources: [] },
+    ],
+    items: [],
   }
 }
 
@@ -40,11 +49,12 @@ describe('poetry store filters', () => {
 
   it('多标签筛选：任意匹配即命中', () => {
     const store = usePoetryStore()
-    store.catalog = createCatalog([
-      createItem({ id: 'song-1', author: '张先', tags: ['宋词三百首'] }),
-      createItem({ id: 'song-2', author: '张先', tags: ['宋词三百首', '西湖'] }),
-      createItem({ id: 'tang-1', author: '李白', dynasty: '唐', tags: ['隋・唐・五代'] }),
-    ])
+    store.catalog = createCatalog()
+    store.indexEntries = [
+      createEntry({ id: 'song-1', author: '张先', tags: ['宋词三百首'] }),
+      createEntry({ id: 'song-2', author: '张先', tags: ['宋词三百首', '西湖'] }),
+      createEntry({ id: 'tang-1', author: '李白', dynasty: '唐', tags: ['隋・唐・五代'] }),
+    ]
 
     store.updateFilters({ tags: ['宋词三百首'] })
 
@@ -53,11 +63,12 @@ describe('poetry store filters', () => {
 
   it('多标签支持多个标签匹配', () => {
     const store = usePoetryStore()
-    store.catalog = createCatalog([
-      createItem({ id: 'song-1', author: '张先', tags: ['宋词三百首'] }),
-      createItem({ id: 'song-2', author: '张先', tags: ['宋词三百首', '西湖'] }),
-      createItem({ id: 'tang-1', author: '李白', dynasty: '唐', tags: ['隋・唐・五代'] }),
-    ])
+    store.catalog = createCatalog()
+    store.indexEntries = [
+      createEntry({ id: 'song-1', author: '张先', tags: ['宋词三百首'] }),
+      createEntry({ id: 'song-2', author: '张先', tags: ['宋词三百首', '西湖'] }),
+      createEntry({ id: 'tang-1', author: '李白', dynasty: '唐', tags: ['隋・唐・五代'] }),
+    ]
 
     store.updateFilters({ tags: ['宋词三百首', '隋・唐・五代'] })
 
@@ -67,9 +78,10 @@ describe('poetry store filters', () => {
 
   it('无匹配时返回空', () => {
     const store = usePoetryStore()
-    store.catalog = createCatalog([
-      createItem({ id: 'song-1', author: '张先', tags: ['宋词三百首'] }),
-    ])
+    store.catalog = createCatalog()
+    store.indexEntries = [
+      createEntry({ id: 'song-1', author: '张先', tags: ['宋词三百首'] }),
+    ]
 
     store.updateFilters({ tags: ['不存在的标签'] })
 
@@ -83,17 +95,18 @@ describe('topTags 全局热度（不受筛选影响）', () => {
     const store = usePoetryStore()
     const tagsStore = useTagsStore()
 
-    const items = [
-      createItem({ id: '1', author: '李白', tags: ['唐诗三百首', '乐府'] }),
-      createItem({ id: '2', author: '李白', tags: ['唐诗三百首'] }),
-      createItem({ id: '3', author: '杜甫', tags: ['唐诗三百首', '五言律诗'] }),
+    const entries = [
+      createEntry({ id: '1', author: '李白', tags: ['唐诗三百首', '乐府'] }),
+      createEntry({ id: '2', author: '李白', tags: ['唐诗三百首'] }),
+      createEntry({ id: '3', author: '杜甫', tags: ['唐诗三百首', '五言律诗'] }),
     ]
-    store.catalog = createCatalog(items)
+    store.catalog = createCatalog()
+    store.indexEntries = entries
 
     // 手动模拟 loadCatalog 中的标签统计注入
     const counts = new Map<string, number>()
-    for (const item of items) {
-      for (const tag of item.tags) counts.set(tag, (counts.get(tag) ?? 0) + 1)
+    for (const entry of entries) {
+      for (const tag of entry.tg) counts.set(tag, (counts.get(tag) ?? 0) + 1)
     }
     tagsStore.setGlobalCounts(counts)
 
@@ -102,8 +115,8 @@ describe('topTags 全局热度（不受筛选影响）', () => {
     expect(store.filteredItems).toHaveLength(1)
 
     const tags = store.topTags
-    expect(tags.find((t) => t.name === '唐诗三百首')?.count).toBe(3)
-    expect(tags.find((t) => t.name === '乐府')?.count).toBe(1)
-    expect(tags.find((t) => t.name === '五言律诗')?.count).toBe(1)
+    expect(tags.find((t: { name: string }) => t.name === '唐诗三百首')?.count).toBe(3)
+    expect(tags.find((t: { name: string }) => t.name === '乐府')?.count).toBe(1)
+    expect(tags.find((t: { name: string }) => t.name === '五言律诗')?.count).toBe(1)
   })
 })

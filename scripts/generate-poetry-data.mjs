@@ -1,10 +1,9 @@
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+﻿import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { basename, join, relative, sep } from 'node:path'
 
 const root = process.cwd()
 const sourceRoot = join(root, 'data', 'chinese-poetry')
 const outputDir = join(root, 'public', 'poetry-data')
-const outputFile = join(outputDir, 'catalog.json')
 
 const collections = [
   {
@@ -13,7 +12,7 @@ const collections = [
     dynasty: '唐',
     description: '全唐诗与唐诗三百首中的代表作品，适合按作者、题名和名句检索。',
     patterns: [/全唐诗[\\/]poet\.tang\.\d+\.json$/, /全唐诗[\\/]唐诗三百首\.json$/],
-    limit: 1400,
+    limit: 6000,
   },
   {
     id: 'song-ci',
@@ -21,7 +20,7 @@ const collections = [
     dynasty: '宋',
     description: '按词牌、作者和正文组织的宋词作品。',
     patterns: [/宋词[\\/]ci\.song\.\d+\.json$/],
-    limit: 1200,
+    limit: 5000,
   },
   {
     id: 'song-poetry',
@@ -29,7 +28,7 @@ const collections = [
     dynasty: '宋',
     description: '全唐诗目录中收录的宋诗分卷，保留原仓库命名并单独归类。',
     patterns: [/全唐诗[\\/]poet\.song\.\d+\.json$/],
-    limit: 900,
+    limit: 4000,
   },
   {
     id: 'shijing',
@@ -53,7 +52,7 @@ const collections = [
     dynasty: '元',
     description: '元曲作品，按曲牌和作者检索。',
     patterns: [/元曲[\\/].*\.json$/],
-    limit: 500,
+    limit: 1500,
   },
   {
     id: 'classics',
@@ -68,8 +67,16 @@ const collections = [
     name: '别集精选',
     dynasty: '历代',
     description: '曹操、纳兰性德、五代诗词等小型别集。',
-    patterns: [/曹操诗集[\\/].*\.json$/, /纳兰性德[\\/].*\.json$/, /五代诗词[\\/].*\.json$/],
+    patterns: [/曹操诗集[\\/].*\.json$/, /纳兰性德[\\/].*\.json$/, /五代诗词[\\/].*\.[jt]son$/],
     limit: 500,
+  },
+  {
+    id: 'yuding',
+    name: '御定全唐诗',
+    dynasty: '唐',
+    description: '清康熙御定《全唐诗》900卷详本，含作者小传与注释。',
+    patterns: [/御定全唐詩[\\/]json[\\/]\d+\.json$/],
+    limit: 5000,
   },
 ]
 
@@ -77,7 +84,10 @@ if (!existsSync(sourceRoot)) {
   throw new Error(`未找到诗词子模块：${sourceRoot}。请先运行 git submodule update --init --recursive。`)
 }
 
+console.log(`正在收集 JSON 文件...`)
 const jsonFiles = collectJsonFiles(sourceRoot)
+console.log(`共发现 ${jsonFiles.length} 个 JSON 文件`)
+
 const items = []
 const collectionStats = new Map(collections.map((item) => [item.id, 0]))
 const usedSources = new Map(collections.map((item) => [item.id, new Set()]))
@@ -89,15 +99,12 @@ for (const collection of collections) {
 
   for (const file of files) {
     if ((collectionStats.get(collection.id) ?? 0) >= collection.limit) break
-
     const rawItems = readJsonArray(file)
     usedSources.get(collection.id)?.add(relative(sourceRoot, file))
-
     for (const rawItem of rawItems) {
       if ((collectionStats.get(collection.id) ?? 0) >= collection.limit) break
       const normalizedItem = normalizeItem(rawItem, collection, file, items.length)
       if (!normalizedItem) continue
-
       items.push(normalizedItem)
       collectionStats.set(collection.id, (collectionStats.get(collection.id) ?? 0) + 1)
     }
@@ -113,37 +120,84 @@ const collectionsPayload = collections.map((collection) => ({
   sources: [...(usedSources.get(collection.id) ?? [])].slice(0, 8),
 }))
 
-const payload = {
+// ---- 输出 1: meta.json（文集信息，极小） ----
+const metaPayload = {
   generatedAt: new Date().toISOString(),
   sourceRepository: 'https://github.com/menghun3-cn/chinese-poetry.git',
   total: items.length,
   collections: collectionsPayload,
-  items,
 }
-
 mkdirSync(outputDir, { recursive: true })
-writeFileSync(outputFile, `${JSON.stringify(payload)}\n`, 'utf8')
+writeFileSync(join(outputDir, 'meta.json'), `${JSON.stringify(metaPayload)}\n`, 'utf8')
+console.log(`已生成 meta.json：共 ${items.length} 条索引`)
 
-console.log(`已生成诗词索引：${relative(root, outputFile)}，共 ${items.length} 条。`)
+// ---- 输出 2: index.json（轻量索引，条目元数据 + excerpt，不含 paragraphs） ----
+const indexPayload = items.map((item) => ({
+  id: item.id,
+  t: item.title,
+  a: item.author,
+  d: item.dynasty,
+  c: item.collectionId,
+  tg: item.tags,
+  r: item.rhythmic,
+  e: item.excerpt,
+  l: item.length,
+  sp: item.sourcePath,
+}))
+writeFileSync(join(outputDir, 'index.json'), `${JSON.stringify(indexPayload)}\n`, 'utf8')
+console.log(`已生成 index.json：${(Buffer.byteLength(JSON.stringify(indexPayload), 'utf8') / 1024 / 1024).toFixed(2)} MB`)
 
+// ---- 输出 3: details/ 按文集分片（含完整 paragraphs） ----
+const detailsDir = join(outputDir, 'details')
+mkdirSync(detailsDir, { recursive: true })
+// 按 collectionId 分组
+const groupMap = new Map()
+for (const item of items) {
+  const list = groupMap.get(item.collectionId) ?? []
+  list.push(item)
+  groupMap.set(item.collectionId, list)
+}
+// 每片 2000 条
+for (const [colId, groupItems] of groupMap) {
+  const chunkSize = 2000
+  for (let i = 0; i < groupItems.length; i += chunkSize) {
+    const chunk = groupItems.slice(i, i + chunkSize)
+    const chunkIndex = Math.floor(i / chunkSize)
+    const chunkItems = chunk.map((item) => ({
+      id: item.id,
+      paragraphs: item.paragraphs,
+    }))
+    writeFileSync(
+      join(detailsDir, `${colId}-${chunkIndex}.json`),
+      `${JSON.stringify(chunkItems)}\n`,
+      'utf8',
+    )
+  }
+}
+const totalChunks = [...groupMap.values()].reduce((s, items) => s + Math.ceil(items.length / 2000), 0)
+console.log(`已生成 details/：${totalChunks} 个分片文件`)
+
+console.log(`\n✅ 生成完成。总条目：${items.length}，索引大小约 ${(Buffer.byteLength(JSON.stringify(indexPayload), 'utf8') / 1024 / 1024).toFixed(2)} MB`)
+
+// ---- 辅助函数 ----
 function collectJsonFiles(dir) {
   const result = []
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const path = join(dir, entry.name)
+    const p = join(dir, entry.name)
     if (entry.isDirectory()) {
       if (entry.name === '.git' || entry.name === '.github' || entry.name === 'images') continue
-      result.push(...collectJsonFiles(path))
+      result.push(...collectJsonFiles(p))
       continue
     }
     if (entry.isFile() && entry.name.endsWith('.json')) {
-      result.push(path)
+      result.push(p)
     }
   }
   return result
 }
 
-function normalize(path) {
-  return relative(sourceRoot, path).split(sep).join('/')
+function normalize(p) {
+  return relative(sourceRoot, p).split(sep).join('/')
 }
 
 function comparePoetryFile(a, b) {
@@ -169,22 +223,17 @@ function readJsonArray(file) {
 
 function normalizeItem(rawItem, collection, file, index) {
   if (!rawItem || typeof rawItem !== 'object') return null
-
   const paragraphs = getParagraphs(rawItem)
   const title = getTitle(rawItem, collection, index)
   if (!title || paragraphs.length === 0) return null
-
   const author = pickString(rawItem.author, rawItem.poet, rawItem.name, rawItem.chapter) || '佚名'
   const tags = Array.isArray(rawItem.tags)
     ? rawItem.tags.filter((tag) => typeof tag === 'string').slice(0, 6)
     : []
   const rhythmic = pickString(rawItem.rhythmic, rawItem.chapter, rawItem.section)
   const sourcePath = relative(sourceRoot, file).split(sep).join('/')
-
   return {
-    id:
-      pickString(rawItem.id) ||
-      `${collection.id}-${basename(file, '.json').replaceAll('.', '-')}-${index.toString(36)}`,
+    id: pickString(rawItem.id) || `${collection.id}-${basename(file, '.json').replaceAll('.', '-')}-${index.toString(36)}`,
     title,
     author,
     dynasty: collection.dynasty,
@@ -200,29 +249,17 @@ function normalizeItem(rawItem, collection, file, index) {
 }
 
 function getTitle(rawItem, collection, index) {
-  return (
-    pickString(
-      rawItem.title,
-      rawItem.rhythmic,
-      rawItem.chapter && rawItem.section ? `${rawItem.chapter} · ${rawItem.section}` : undefined,
-    ) || `${collection.name}选篇 ${index + 1}`
-  )
+  return pickString(rawItem.title, rawItem.rhythmic, rawItem.chapter && rawItem.section ? `${rawItem.chapter} · ${rawItem.section}` : undefined) || `${collection.name}选篇 ${index + 1}`
 }
 
 function getParagraphs(rawItem) {
   const candidates = [rawItem.paragraphs, rawItem.content, rawItem.paragraph, rawItem.text]
   for (const candidate of candidates) {
     if (Array.isArray(candidate)) {
-      return candidate
-        .map((line) => (typeof line === 'string' ? line.trim() : ''))
-        .filter(Boolean)
-        .slice(0, 24)
+      return candidate.map((line) => (typeof line === 'string' ? line.trim() : '')).filter(Boolean).slice(0, 24)
     }
     if (typeof candidate === 'string') {
-      return candidate
-        .split(/\r?\n|。/)
-        .map((line) => line.trim())
-        .filter(Boolean)
+      return candidate.split(/\r?\n|。/).map((line) => line.trim()).filter(Boolean)
         .map((line) => (line.endsWith('。') || line.endsWith('！') || line.endsWith('？') ? line : `${line}。`))
         .slice(0, 24)
     }

@@ -1,7 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 
-import HomeView from '@/views/HomeView.vue'
-import InsightsView from '@/views/InsightsView.vue'
+const HomeView = () => import('@/views/HomeView.vue')
+const InsightsView = () => import('@/views/InsightsView.vue')
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -25,7 +25,8 @@ const router = createRouter({
 })
 
 router.afterEach((to) => {
-  document.title = `${to.meta.title ?? '诗词阅读'} | 诗屿`
+  const title = (to.meta.title as string | undefined) || '诗词阅读'
+  document.title = title + ' | 诗屿'
 })
 
 export default router

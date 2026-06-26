@@ -7,6 +7,15 @@
       name="description"
       content="依托 menghun3-cn/chinese-poetry 数据仓库构建的中文诗词阅读网站。"
     />
+
+    <!-- Preload critical assets -->
+    <link rel="preconnect" href="/" />
+    <link rel="preload" href="/poetry-data/meta.json" as="fetch" crossorigin="anonymous" />
+    <link rel="preload" href="/poetry-data/index.json" as="fetch" crossorigin="anonymous" />
+
+    <!-- DNS prefetch for third-party -->
+    <link rel="dns-prefetch" href="https://chinese-poetry-web-at3.pages.dev" />
+
     <title>诗屿 | 中文诗词阅读</title>
   </head>
   <body>

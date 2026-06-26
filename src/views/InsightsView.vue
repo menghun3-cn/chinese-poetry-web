@@ -23,7 +23,7 @@
         <div class="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-[var(--shadow-card)]">
           <h2 class="text-base font-semibold">热门作者</h2>
           <div class="mt-4 space-y-3">
-            <div v-for="author in store.topAuthors" :key="author.name" class="flex items-center justify-between gap-4">
+            <div v-for="author in store.topAuthorsList" :key="author.name" class="flex items-center justify-between gap-4">
               <span class="truncate text-sm">{{ author.name }}</span>
               <span class="text-sm font-medium text-[var(--color-primary-hover)]">{{ author.count }} 首</span>
             </div>

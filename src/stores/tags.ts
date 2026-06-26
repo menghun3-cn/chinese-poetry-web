@@ -1,5 +1,5 @@
 ﻿import { defineStore } from 'pinia'
-import { computed, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 
 import type { CategorizedTag, TagCategory, TagCategoryMeta } from '@/types/tags'
 import { TAG_CATEGORIES } from '@/types/tags'
@@ -279,7 +279,7 @@ export const useTagsStore = defineStore('tags', () => {
   // ── 状态 ──
   const recentTags = ref<string[]>(readRecent())
   // 用于搜索的缓存：所有 items 的标签频次统计（由 poetry store 在 loadCatalog 时触发填充）
-  const globalTagCounts = ref<Map<string, number>>(new Map())
+  const globalTagCounts: Record<string, number> = reactive({})
 
   // ── 计算属性 ──
   /** 所有标签按分类分组 */
@@ -287,7 +287,7 @@ export const useTagsStore = defineStore('tags', () => {
     const map = new Map<TagCategory, CategorizedTag[]>()
     for (const cat of TAG_CATEGORIES) map.set(cat.id, [])
 
-    for (const [name, count] of globalTagCounts.value) {
+    for (const [name, count] of Object.entries(globalTagCounts)) {
       const category = TAG_TO_CATEGORY[name] ?? 'other'
       const list = map.get(category)
       if (list) {
@@ -310,8 +310,8 @@ export const useTagsStore = defineStore('tags', () => {
   )
 
   // ── 方法 ──
-  function setGlobalCounts(counts: Map<string, number>) {
-    globalTagCounts.value = counts
+  function setGlobalCounts(counts: Map<string, number> | Record<string, number>) {
+    Object.assign(globalTagCounts, counts instanceof Map ? Object.fromEntries(counts) : counts)
   }
 
   function pushRecent(tag: string) {

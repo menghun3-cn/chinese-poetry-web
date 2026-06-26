@@ -159,7 +159,7 @@ export const usePoetryStore = defineStore('poetry', () => {
 
   const topTags = computed(() => {
     const tagsStore = useTagsStore()
-    return [...tagsStore.globalTagCounts.entries()]
+    return Object.entries(tagsStore.globalTagCounts)
       .sort((a, b) => b[1] - a[1])
       .slice(0, 16)
       .map(([name, count]) => ({ name, count }))

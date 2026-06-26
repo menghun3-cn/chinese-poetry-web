@@ -13,13 +13,21 @@ export function inlinePoetryMeta(): Plugin {
     transformIndexHtml: {
       order: "pre",
       handler(html: string) {
+        // 内联 meta.json
         const metaPath = resolve(__dirname, "../public/poetry-data/meta.json")
         let metaJson = "{}"
-        try { metaJson = readFileSync(metaPath, "utf-8") }
+        try { metaJson = readFileSync(metaPath, "utf-8").trim() }
+        catch { /* dev fallback */ }
+
+        // 内联 overview 前 2000 条
+        const overviewPath = resolve(__dirname, "../public/poetry-data/inline-overview.json")
+        let overviewJson = "[]"
+        try { overviewJson = readFileSync(overviewPath, "utf-8").trim() }
         catch { /* dev fallback */ }
 
         const metaScript = '<script id="poetry-meta-data" type="application/json">' + metaJson + '</script>'
-        html = html.replace("</head>", metaScript + "\n</head>")
+        const overviewScript = '<script id="poetry-overview-data" type="application/json">' + overviewJson + '</script>'
+        html = html.replace("</head>", metaScript + "\n" + overviewScript + "\n</head>")
         return html
       },
     },

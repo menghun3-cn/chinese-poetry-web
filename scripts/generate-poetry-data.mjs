@@ -161,6 +161,15 @@ shuffleArray(overviewItems)
 writeFileSync(join(outputDir, 'index.overview.json'), JSON.stringify(overviewItems.map(toIndexEntry)) + '\\n', 'utf8')
 console.log('已生成 index.overview.json: ' + overviewItems.length + ' 条概览')
 
+// 输出内联概览文件（前 2000 条，用于构建时注入 index.html）
+var inlineOverviewItems = overviewItems.map(toIndexEntry).slice(0, 2000)
+writeFileSync(
+  join(outputDir, 'inline-overview.json'),
+  JSON.stringify(inlineOverviewItems) + '\n',
+  'utf8'
+)
+console.log('已生成 inline-overview.json: ' + inlineOverviewItems.length + ' 条（内联概览）')
+
 // ── 输出 3: index.{collectionId}.json（文集全量索引） ──
 // 大文集（song-poetry, tang, yuding, song-ci）按 20000 条分片
 const INDEX_CHUNK_SIZE = 20000

@@ -10,6 +10,8 @@ const defaultFilters: PoetryFilters = {
   author: '',
 }
 
+type FilterKey = keyof PoetryFilters
+
 export const usePoetryStore = defineStore('poetry', () => {
   const catalog = ref<PoetryCatalog | null>(null)
   const selectedId = ref('')
@@ -27,44 +29,39 @@ export const usePoetryStore = defineStore('poetry', () => {
   })
 
   const filteredItems = computed(() => {
-    const keyword = normalize(filters.value.keyword)
-    const tag = filters.value.tag
-    const author = normalize(filters.value.author)
-
-    return items.value.filter((item) => {
-      const matchesCollection =
-        filters.value.collectionId === 'all' || item.collectionId === filters.value.collectionId
-      const matchesTag = !tag || item.tags.includes(tag)
-      const matchesAuthor = !author || normalize(item.author).includes(author)
-      const haystack = normalize(
-        [item.title, item.author, item.collection, item.rhythmic, item.excerpt, ...item.tags].join(
-          ' ',
-        ),
-      )
-      const matchesKeyword = !keyword || haystack.includes(keyword)
-      return matchesCollection && matchesTag && matchesAuthor && matchesKeyword
-    })
+    return items.value.filter((item) => matchesPoetryFilters(item, filters.value))
   })
 
   const topTags = computed(() => {
     const counter = new Map<string, number>()
-    for (const item of items.value) {
+    for (const item of items.value.filter((item) =>
+      matchesPoetryFilters(item, filters.value, ['tag']),
+    )) {
       for (const tag of item.tags) counter.set(tag, (counter.get(tag) ?? 0) + 1)
     }
-    return [...counter.entries()]
+    if (filters.value.tag && !counter.has(filters.value.tag)) counter.set(filters.value.tag, 0)
+    const sortedTags = [...counter.entries()]
       .sort((a, b) => b[1] - a[1])
       .slice(0, 16)
       .map(([name, count]) => ({ name, count }))
+    return keepActiveOption(sortedTags, filters.value.tag)
   })
 
   const topAuthors = computed(() => {
     const counter = new Map<string, number>()
-    for (const item of items.value) counter.set(item.author, (counter.get(item.author) ?? 0) + 1)
-    return [...counter.entries()]
+    for (const item of items.value.filter((item) =>
+      matchesPoetryFilters(item, filters.value, ['author']),
+    )) {
+      counter.set(item.author, (counter.get(item.author) ?? 0) + 1)
+    }
+    if (filters.value.author && !counter.has(filters.value.author))
+      counter.set(filters.value.author, 0)
+    const sortedAuthors = [...counter.entries()]
       .filter(([name]) => name !== '佚名')
       .sort((a, b) => b[1] - a[1])
       .slice(0, 12)
       .map(([name, count]) => ({ name, count }))
+    return keepActiveOption(sortedAuthors, filters.value.author)
   })
 
   const favoriteItems = computed(() =>
@@ -136,6 +133,41 @@ export const usePoetryStore = defineStore('poetry', () => {
 
 function normalize(value: string | undefined) {
   return (value ?? '').trim().toLocaleLowerCase('zh-CN')
+}
+
+function matchesPoetryFilters(
+  item: PoetryItem,
+  filters: PoetryFilters,
+  ignoredKeys: FilterKey[] = [],
+) {
+  const ignored = new Set<FilterKey>(ignoredKeys)
+  const keyword = normalize(filters.keyword)
+  const author = normalize(filters.author)
+
+  const matchesCollection =
+    ignored.has('collectionId') ||
+    filters.collectionId === 'all' ||
+    item.collectionId === filters.collectionId
+  const matchesTag = ignored.has('tag') || !filters.tag || item.tags.includes(filters.tag)
+  const matchesAuthor = ignored.has('author') || !author || normalize(item.author).includes(author)
+  const haystack = normalize(
+    [item.title, item.author, item.collection, item.rhythmic, item.excerpt, ...item.tags].join(' '),
+  )
+  const matchesKeyword = ignored.has('keyword') || !keyword || haystack.includes(keyword)
+  return matchesCollection && matchesTag && matchesAuthor && matchesKeyword
+}
+
+function keepActiveOption(options: { name: string; count: number }[], activeName: string) {
+  if (!activeName) return options
+
+  const activeOption = options.find((option) => option.name === activeName) ?? {
+    name: activeName,
+    count: 0,
+  }
+  return [
+    activeOption,
+    ...options.filter((option) => option.name !== activeName).slice(0, options.length - 1),
+  ]
 }
 
 function readFavorites() {

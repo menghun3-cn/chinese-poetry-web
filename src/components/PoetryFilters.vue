@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <section class="space-y-4" aria-labelledby="poetry-filter-title">
     <div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
       <div>
@@ -47,70 +47,46 @@
       />
     </div>
 
-    <div class="grid gap-3 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
-      <div v-if="store.topTags.length" class="min-w-0" aria-label="热门标签">
-        <p class="mb-2 text-xs font-medium text-[var(--color-text-muted)]">热门标签</p>
-        <div class="flex gap-2 overflow-x-auto pb-1">
-          <button
-            v-for="tag in store.topTags"
-            :key="tag.name"
-            class="min-h-11 shrink-0 rounded-full border px-3 text-sm transition"
-            :class="
-              store.filters.tag === tag.name
-                ? 'border-transparent bg-[var(--color-primary)] text-white'
-                : 'border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-muted)]'
-            "
-            :aria-pressed="store.filters.tag === tag.name"
-            @click="store.updateFilters({ tag: store.filters.tag === tag.name ? '' : tag.name })"
-          >
-            {{ tag.name }} {{ tag.count }}
-          </button>
-        </div>
-      </div>
+    <div class="space-y-5" v-if="showLabelClouds">
+      <!-- 热门标签区域 -->
+      <TagCloudPanel @open-all="showTagModal = true" />
 
-      <div v-if="store.topAuthors.length" class="min-w-0" aria-label="常读作者">
-        <p class="mb-2 text-xs font-medium text-[var(--color-text-muted)]">常读作者</p>
-        <div class="flex gap-2 overflow-x-auto pb-1">
-          <button
-            v-for="author in store.topAuthors.slice(0, 8)"
-            :key="author.name"
-            class="min-h-11 shrink-0 rounded-full border px-3 text-sm transition"
-            :class="
-              store.filters.author === author.name
-                ? 'border-transparent bg-[var(--color-accent)] text-white'
-                : 'border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-muted)]'
-            "
-            :aria-pressed="store.filters.author === author.name"
-            @click="selectAuthor(author.name)"
-          >
-            {{ author.name }} {{ author.count }}
-          </button>
-        </div>
-      </div>
+      <!-- 常读作者区域 -->
+      <AuthorCloudPanel @open-all="showAuthorModal = true" />
     </div>
+
+    <!-- 弹出层 -->
+    <TagSelectModal v-if="showTagModal" @close="showTagModal = false" />
+    <AuthorSelectModal v-if="showAuthorModal" @close="showAuthorModal = false" />
   </section>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { RotateCcw, Search, UserRound } from 'lucide-vue-next'
 
 import AppButton from '@/components/ui/AppButton.vue'
 import AppInput from '@/components/ui/AppInput.vue'
 import AppSelect from '@/components/ui/AppSelect.vue'
+import TagCloudPanel from '@/components/TagCloudPanel.vue'
+import TagSelectModal from '@/components/TagSelectModal.vue'
+import AuthorCloudPanel from '@/components/AuthorCloudPanel.vue'
+import AuthorSelectModal from '@/components/AuthorSelectModal.vue'
 import { usePoetryStore } from '@/stores/poetry'
 
 const store = usePoetryStore()
+
+const showTagModal = ref(false)
+const showAuthorModal = ref(false)
 
 const hasActiveFilters = computed(
   () =>
     Boolean(store.filters.keyword) ||
     Boolean(store.filters.author) ||
-    Boolean(store.filters.tag) ||
+    store.filters.tags.length > 0 ||
     store.filters.collectionId !== 'all',
 )
 
-function selectAuthor(author: string) {
-  store.updateFilters({ author: store.filters.author === author ? '' : author })
-}
+// 数据加载完成后才展示标签/作者云
+const showLabelClouds = computed(() => !store.loading && !store.error)
 </script>

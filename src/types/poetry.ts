@@ -1,4 +1,4 @@
-export interface PoetryItem {
+﻿export interface PoetryItem {
   id: string
   title: string
   author: string
@@ -33,6 +33,7 @@ export interface PoetryCatalog {
 export interface PoetryFilters {
   keyword: string
   collectionId: string
-  tag: string
+  /** 多标签筛选，任意匹配即命中 */
+  tags: string[]
   author: string
 }

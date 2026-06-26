@@ -1,12 +1,13 @@
-import { defineStore } from 'pinia'
+﻿import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 
 import type { PoetryCatalog, PoetryFilters, PoetryItem } from '@/types/poetry'
+import { useTagsStore } from '@/stores/tags'
 
 const defaultFilters: PoetryFilters = {
   keyword: '',
   collectionId: 'all',
-  tag: '',
+  tags: [],
   author: '',
 }
 
@@ -32,36 +33,26 @@ export const usePoetryStore = defineStore('poetry', () => {
     return items.value.filter((item) => matchesPoetryFilters(item, filters.value))
   })
 
+  // 全局热度（不受当前筛选影响）
   const topTags = computed(() => {
-    const counter = new Map<string, number>()
-    for (const item of items.value.filter((item) =>
-      matchesPoetryFilters(item, filters.value, ['tag']),
-    )) {
-      for (const tag of item.tags) counter.set(tag, (counter.get(tag) ?? 0) + 1)
-    }
-    if (filters.value.tag && !counter.has(filters.value.tag)) counter.set(filters.value.tag, 0)
-    const sortedTags = [...counter.entries()]
+    const tagsStore = useTagsStore()
+    const all = [...tagsStore.globalTagCounts.entries()]
       .sort((a, b) => b[1] - a[1])
       .slice(0, 16)
       .map(([name, count]) => ({ name, count }))
-    return keepActiveOption(sortedTags, filters.value.tag)
+    return all
   })
 
   const topAuthors = computed(() => {
     const counter = new Map<string, number>()
-    for (const item of items.value.filter((item) =>
-      matchesPoetryFilters(item, filters.value, ['author']),
-    )) {
-      counter.set(item.author, (counter.get(item.author) ?? 0) + 1)
+    for (const item of items.value) {
+      if (item.author && item.author !== '佚名')
+        counter.set(item.author, (counter.get(item.author) ?? 0) + 1)
     }
-    if (filters.value.author && !counter.has(filters.value.author))
-      counter.set(filters.value.author, 0)
-    const sortedAuthors = [...counter.entries()]
-      .filter(([name]) => name !== '佚名')
+    return [...counter.entries()]
       .sort((a, b) => b[1] - a[1])
       .slice(0, 12)
       .map(([name, count]) => ({ name, count }))
-    return keepActiveOption(sortedAuthors, filters.value.author)
   })
 
   const favoriteItems = computed(() =>
@@ -80,6 +71,18 @@ export const usePoetryStore = defineStore('poetry', () => {
       if (!response.ok) throw new Error(`HTTP ${response.status}`)
       catalog.value = (await response.json()) as PoetryCatalog
       selectedId.value = catalog.value.items[0]?.id ?? ''
+
+      // 注入全局标签统计到 tags store
+      const globalCounts = new Map<string, number>()
+      for (const item of catalog.value.items) {
+        if (item.tags) {
+          for (const tag of item.tags) {
+            globalCounts.set(tag, (globalCounts.get(tag) ?? 0) + 1)
+          }
+        }
+      }
+      const tagsStore = useTagsStore()
+      tagsStore.setGlobalCounts(globalCounts)
     } catch {
       error.value = '诗词索引加载失败，请确认已执行 npm run build 或 npm run prebuild。'
     } finally {
@@ -141,33 +144,30 @@ function matchesPoetryFilters(
   ignoredKeys: FilterKey[] = [],
 ) {
   const ignored = new Set<FilterKey>(ignoredKeys)
-  const keyword = normalize(filters.keyword)
-  const author = normalize(filters.author)
 
   const matchesCollection =
     ignored.has('collectionId') ||
     filters.collectionId === 'all' ||
     item.collectionId === filters.collectionId
-  const matchesTag = ignored.has('tag') || !filters.tag || item.tags.includes(filters.tag)
-  const matchesAuthor = ignored.has('author') || !author || normalize(item.author).includes(author)
+
+  // 多标签匹配：选中的标签中，只要作品包含任意一个即匹配
+  const matchesTag =
+    ignored.has('tags') ||
+    !filters.tags.length ||
+    filters.tags.some((tag) => item.tags.includes(tag))
+
+  const matchesAuthor =
+    ignored.has('author') ||
+    !filters.author ||
+    normalize(item.author).includes(normalize(filters.author))
+
   const haystack = normalize(
     [item.title, item.author, item.collection, item.rhythmic, item.excerpt, ...item.tags].join(' '),
   )
-  const matchesKeyword = ignored.has('keyword') || !keyword || haystack.includes(keyword)
+  const matchesKeyword =
+    ignored.has('keyword') || !filters.keyword || haystack.includes(normalize(filters.keyword))
+
   return matchesCollection && matchesTag && matchesAuthor && matchesKeyword
-}
-
-function keepActiveOption(options: { name: string; count: number }[], activeName: string) {
-  if (!activeName) return options
-
-  const activeOption = options.find((option) => option.name === activeName) ?? {
-    name: activeName,
-    count: 0,
-  }
-  return [
-    activeOption,
-    ...options.filter((option) => option.name !== activeName).slice(0, options.length - 1),
-  ]
 }
 
 function readFavorites() {

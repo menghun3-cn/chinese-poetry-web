@@ -1,9 +1,12 @@
 <template>
-  <section class="grid gap-4 md:grid-cols-3">
+  <section
+    class="grid gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-3 shadow-[var(--shadow-card)] md:grid-cols-3"
+    aria-label="诗词数据概览"
+  >
     <div
       v-for="stat in stats"
       :key="stat.label"
-      class="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-[var(--shadow-card)]"
+      class="rounded-lg bg-[var(--color-surface-muted)] px-4 py-3"
     >
       <p class="text-sm text-[var(--color-text-muted)]">{{ stat.label }}</p>
       <p class="mt-2 text-2xl font-semibold">{{ stat.value }}</p>

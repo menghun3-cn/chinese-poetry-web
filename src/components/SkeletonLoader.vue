@@ -1,6 +1,5 @@
 <template>
   <div class="loader-root">
-    <!-- ?? -->
     <div class="loader-brand">
       <svg class="loader-logo" viewBox="0 0 48 48" fill="none">
         <rect width="48" height="48" rx="12" fill="var(--color-primary)" opacity="0.1" />
@@ -14,19 +13,17 @@
       </div>
     </div>
 
-    <!-- ??? -->
     <div class="loader-progress-track">
       <div class="loader-progress-fill" :style="{ width: Math.min(progress, 100) + '%' }" />
     </div>
 
-    <!-- ??? -->
     <div class="loader-message">
       <span class="loader-dot" />
-      <span>正在加载索引&hellip;</span>
-      <span class="loader-percent">{{ Math.round(Math.min(progress, 100)) }}%</span>
+      <span>{{ message }}</span>
+      <span v-if="progress > 0" class="loader-percent">{{ Math.round(Math.min(progress, 100)) }}%</span>
+      <span v-if="loadedCount > 0" class="loader-count">（{{ loadedCount.toLocaleString() }} / {{ totalCount.toLocaleString() }} 首）</span>
     </div>
 
-    <!-- ???? -->
     <div class="loader-skeleton">
       <div class="loader-skeleton-card">
         <div class="loader-skeleton-block" style="width:45%" />
@@ -40,7 +37,6 @@
       </div>
     </div>
 
-    <!-- ?? -->
     <p class="loader-footer">
       全唐诗 · 全宋诗 · 全宋词 · 元曲 · 38万+ 首
     </p>
@@ -51,8 +47,11 @@
 withDefaults(
   defineProps<{
     progress?: number
+    message?: string
+    loadedCount?: number
+    totalCount?: number
   }>(),
-  { progress: 0 },
+  { progress: 0, message: '正在加载索引...', loadedCount: 0, totalCount: 0 },
 )
 </script>
 
@@ -140,6 +139,12 @@ withDefaults(
   font-variant-numeric: tabular-nums;
   font-weight: 500;
   color: var(--color-primary);
+}
+
+.loader-count {
+  font-variant-numeric: tabular-nums;
+  font-size: 0.6875rem;
+  color: var(--color-text-muted);
 }
 
 .loader-skeleton {

@@ -297,6 +297,10 @@ export const usePoetryStore = defineStore('poetry', () => {
 
   const favorites = ref<string[]>(readFavorites())
 
+  const isLoadingFullOverview = ref(false)
+  const overviewLoadProgress = ref(0)
+  const overviewTotalProgress = ref(0)
+
   const items = computed<PoetryItem[]>(() =>
     indexEntries.value.map((e) => ({
       id: e.id,
@@ -556,6 +560,8 @@ export const usePoetryStore = defineStore('poetry', () => {
     isOverviewMode, isUsingOverview, items, loading, loadingMessage, loadingProgress,
     selectedId, selectedItem, topAuthorsList, topTagsList, totalCount,
     frequentAuthors, hotTags,
+    isLoadingFullOverview, overviewLoadProgress, overviewTotalProgress,
+    loadFullOverviewInBackground,
     ensureDetail, loadCatalog, loadCollectionFullIndex, resetFilters, selectItem,
     switchToOverview, toggleFavorite, updateFilters,
   }

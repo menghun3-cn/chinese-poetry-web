@@ -3,14 +3,10 @@
     <PoetryFiltersCompact />
     
     <!-- 首次加载骨架屏 -->
-    <SkeletonLoader v-if="store.loading && !store.isLoadingFullOverview" :progress="store.loadingProgress" :message="store.loadingMessage" class="flex-1" />
+    <SkeletonLoader v-if="store.loading" :progress="store.loadingProgress" :message="store.loadingMessage" class="flex-1" />
 
-    <!-- 后台全量加载时的轻提示 -->
-    <div v-if="!store.loading && store.isLoadingFullOverview" class="bg-[var(--color-surface)] border-b border-[var(--color-border)] px-3 py-1 text-[11px] text-[var(--color-text-muted)] flex items-center gap-2">
-      <span class="size-1.5 rounded-full bg-[var(--color-primary)] animate-pulse shrink-0" />
-      <span>全量加载中：{{ store.overviewLoadProgress.toLocaleString() }} / {{ store.overviewTotalProgress.toLocaleString() }} 首</span>
-      <span class="ml-auto">{{ Math.round(Math.min(store.overviewLoadProgress / store.overviewTotalProgress * 100, 100)) }}%</span>
-    </div>
+    
+    
 
     <StateNotice v-else-if="store.error" title="索引加载失败" :description="store.error" tone="danger" />
     

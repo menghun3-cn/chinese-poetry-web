@@ -297,9 +297,6 @@ export const usePoetryStore = defineStore('poetry', () => {
 
   const favorites = ref<string[]>(readFavorites())
 
-  const isLoadingFullOverview = ref(false)
-  const overviewLoadProgress = ref(0)
-  const overviewTotalProgress = ref(0)
 
   const items = computed<PoetryItem[]>(() =>
     indexEntries.value.map((e) => ({
@@ -381,7 +378,7 @@ export const usePoetryStore = defineStore('poetry', () => {
             loading.value = false
             loadingProgress.value = 100
             // 鍚庡彴缁х画鍔犺浇瀹屾暣姒傝
-            loadFullOverviewInBackground()
+            // loadFullOverviewInBackground()
             return
           }
         } catch { /* fallback */ }
@@ -404,103 +401,6 @@ export const usePoetryStore = defineStore('poetry', () => {
     } finally {
       loading.value = false
       loadingProgress.value = 100
-    }
-  }
-
-  // 鍚庡彴鍔犺浇瀹屾暣姒傝锛堝唴鑱旀暟鎹粎 2000 鏉★紝鍚庡彴鍔犺浇瀹屾暣 18000+ 鏉★級
-  let _bgLoaded = false
-  let _bgTimer: ReturnType<typeof setTimeout> | null = null
-  let _bgBatchEntries: IndexEntry[] = []
-  async function loadFullOverviewInBackground() {
-    if (!catalog.value) return
-    if (_bgLoaded) return
-    _bgLoaded = true
-    isLoadingFullOverview.value = true
-    const collections = catalog.value.collections
-    let totalCountVal = 0
-    for (const col of collections) totalCountVal += col.count
-    if (totalCountVal === 0) { isLoadingFullOverview.value = false; return }
-    overviewTotalProgress.value = totalCountVal
-    overviewLoadProgress.value = indexEntries.value.length
-    _bgBatchEntries = [...indexEntries.value]
-
-    // 遍历所有文集，加载其全部分片
-    for (const col of collections) {
-      if (col.count === 0) continue
-      try {
-        await loadSingleCollectionFullInBg(col.id, col.count)
-      } catch { /* skip */ }
-    }
-
-    isLoadingFullOverview.value = false
-    overviewLoadProgress.value = _bgBatchEntries.length
-    indexEntries.value = _bgBatchEntries
-    injectStats(_bgBatchEntries)
-    // 刷新频繁作者/标签（基于完整统计）
-  }
-
-  /** 后台小批量刷新的节流函数：每 300ms 最多刷新一次 DOM */
-  function _flushBgProgress() {
-    if (_bgTimer) return
-    _bgTimer = setTimeout(() => {
-      _bgTimer = null
-      indexEntries.value = [..._bgBatchEntries]
-      overviewLoadProgress.value = _bgBatchEntries.length
-    }, 300)
-  }
-
-  async function loadSingleCollectionFullInBg(collectionId: string, totalCount: number) {
-    const metaResp = await fetch('/poetry-data/index.' + collectionId + '.meta.json').catch(() => null)
-    if (metaResp && metaResp.ok) {
-      const meta: IndexMeta = await metaResp.json()
-      for (let i = 0; i < meta.chunks; i++) {
-        try {
-          const cached = await getCachedChunk(collectionId, i)
-          if (cached) {
-            for (const entry of cached) {
-              if (!_bgBatchEntries.find(e => e.id === entry.id)) _bgBatchEntries.push(entry)
-            }
-            _flushBgProgress()
-            continue
-          }
-          const resp = await fetch('/poetry-data/index.' + collectionId + '.' + i + '.json')
-          if (!resp.ok) continue
-          const chunk: IndexEntry[] = await resp.json()
-          for (const entry of chunk) {
-            if (!_bgBatchEntries.find(e => e.id === entry.id)) _bgBatchEntries.push(entry)
-          }
-          overviewLoadProgress.value = _bgBatchEntries.length
-          _flushBgProgress()
-          setCachedChunk(collectionId, i, chunk).catch(() => {})
-        } catch { /* skip */ }
-      }
-      // 缓存完整索引
-      const allChunks: IndexEntry[] = []
-      for (let i = 0; i < meta.chunks; i++) {
-        const cc = await getCachedChunk(collectionId, i)
-        if (cc) allChunks.push(...cc)
-      }
-      if (allChunks.length === meta.total) {
-        setCachedIndex(collectionId, allChunks).catch(() => {})
-      }
-    } else {
-      // 小文集（单文件）
-      const cached = await getCachedIndex(collectionId)
-      if (cached?.length === totalCount) {
-        for (const entry of cached) {
-          if (!_bgBatchEntries.find(e => e.id === entry.id)) _bgBatchEntries.push(entry)
-        }
-        overviewLoadProgress.value = _bgBatchEntries.length
-        return
-      }
-      const resp = await fetch('/poetry-data/index.' + collectionId + '.json')
-      if (!resp.ok) return
-      const data: IndexEntry[] = await resp.json()
-      for (const entry of data) {
-        if (!_bgBatchEntries.find(e => e.id === entry.id)) _bgBatchEntries.push(entry)
-      }
-      overviewLoadProgress.value = _bgBatchEntries.length
-      setCachedIndex(collectionId, data).catch(() => {})
     }
   }
 
@@ -541,7 +441,7 @@ export const usePoetryStore = defineStore('poetry', () => {
     currentCollectionId.value = 'all'
     hasFullCollectionLoaded.value = false
     // 如果后台全量加载已完成，直接使用现有 indexEntries，无需重新加载
-    if (_bgLoaded && indexEntries.value.length > 20000) return
+    // if (_bgLoaded && indexEntries.value.length > 20000) return
     // 否则重新加载概览（内联数据秒开）
     loadCatalog()
   }
@@ -633,14 +533,28 @@ export const usePoetryStore = defineStore('poetry', () => {
     localStorage.setItem('poetry:favorites', JSON.stringify(next))
   }
 
+  function removeFrequentAuthor(name: string) {
+    const freq = readAuthorFreq()
+    delete freq[name]
+    saveAuthorFreq(freq)
+    frequentAuthors.value = Object.entries(freq)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, MAX_AUTHORS)
+      .map(([name, count]) => ({ name, count }))
+  }
+
+  function removeHotTag(tag: string) {
+    const tags = readHotTags()
+    hotTags.value = tags.filter(t => t !== tag)
+    saveHotTags(hotTags.value)
+  }
+
   return {
     catalog, collections, currentCollectionId, error, favorites, favoriteItems,
     filteredItems, filters, hasFullCollectionLoaded, indexEntries,
     isOverviewMode, isUsingOverview, items, loading, loadingMessage, loadingProgress,
     selectedId, selectedItem, topAuthorsList, topTagsList, totalCount,
-    frequentAuthors, hotTags,
-    isLoadingFullOverview, overviewLoadProgress, overviewTotalProgress,
-    loadFullOverviewInBackground,
+    frequentAuthors, hotTags, removeFrequentAuthor, removeHotTag,
     ensureDetail, loadCatalog, loadCollectionFullIndex, resetFilters, selectItem,
     switchToOverview, toggleFavorite, updateFilters,
   }
@@ -677,4 +591,6 @@ function readFavorites() {
     return Array.isArray(parsed) ? parsed.filter((i) => typeof i === 'string') : []
   } catch { return [] }
 }
+
+
 

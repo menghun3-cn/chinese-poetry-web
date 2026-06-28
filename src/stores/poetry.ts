@@ -410,18 +410,109 @@ export const usePoetryStore = defineStore('poetry', () => {
   // 鍚庡彴鍔犺浇瀹屾暣姒傝锛堝唴鑱旀暟鎹粎 2000 鏉★紝鍚庡彴鍔犺浇瀹屾暣 18000+ 鏉★級
   let _bgLoaded = false
   async function loadFullOverviewInBackground() {
+    if (!catalog.value) return
     if (_bgLoaded) return
     _bgLoaded = true
-    try {
-      const r = await fetch('/poetry-data/index.overview.json')
-      if (!r.ok) return
-      const full: IndexEntry[] = await r.json()
-      if (full.length > indexEntries.value.length) {
-        indexEntries.value = full
-        injectStats(full)
-        setCachedIndex('overview', full).catch(() => {})
+    isLoadingFullOverview.value = true
+    let totalLoaded = 0
+    let totalCountVal = 0
+    const collections = catalog.value.collections
+    // 计算总条数
+    for (const col of collections) totalCountVal += col.count
+    if (totalCountVal === 0) { isLoadingFullOverview.value = false; return }
+    overviewTotalProgress.value = totalCountVal
+    overviewLoadProgress.value = indexEntries.value.length
+
+    // 遍历所有文集，加载其全部分片
+    for (const col of collections) {
+      if (col.count === 0) continue
+      try {
+        await loadSingleCollectionFullInBg(col.id, col.count)
+      } catch { /* skip */ }
+    }
+
+    isLoadingFullOverview.value = false
+    overviewLoadProgress.value = indexEntries.value.length
+  }
+
+  async function loadSingleCollectionFullInBg(collectionId: string, totalCount: number) {
+    // 尝试加载 meta.json（大文集分片）
+    const metaResp = await fetch('/poetry-data/index.' + collectionId + '.meta.json').catch(() => null)
+    if (metaResp && metaResp.ok) {
+      const meta: IndexMeta = await metaResp.json()
+      // 逐片加载
+      for (let i = 0; i < meta.chunks; i++) {
+        try {
+          // 先检查缓存
+          const cached = await getCachedChunk(collectionId, i)
+          if (cached) {
+            // 已有缓存，插入到正确位置
+            const current = [...indexEntries.value]
+            const offset = i * meta.chunkSize
+            let inserted = 0
+            for (let j = 0; j < cached.length; j++) {
+              if (!current.find(e => e.id === cached[j].id)) {
+                current[offset + inserted] = cached[j]
+                inserted++
+              }
+            }
+            indexEntries.value = current.filter(Boolean)
+            overviewLoadProgress.value = indexEntries.value.length
+            continue
+          }
+          const resp = await fetch('/poetry-data/index.' + collectionId + '.' + i + '.json')
+          if (!resp.ok) continue
+          const chunk: IndexEntry[] = await resp.json()
+          // 合并去重
+          const current = [...indexEntries.value]
+          const offset = i * meta.chunkSize
+          let merged = 0
+          for (let j = 0; j < chunk.length; j++) {
+            if (!current.find(e => e.id === chunk[j].id)) {
+              current[offset + merged] = chunk[j]
+              merged++
+            }
+          }
+          indexEntries.value = current.filter(Boolean)
+          overviewLoadProgress.value = indexEntries.value.length
+          setCachedChunk(collectionId, i, chunk).catch(() => {})
+        } catch { /* skip */ }
       }
-    } catch { /* silent */ }
+      // 缓存完整索引
+      const allChunks: IndexEntry[] = []
+      for (let i = 0; i < meta.chunks; i++) {
+        const cc = await getCachedChunk(collectionId, i)
+        if (cc) allChunks.push(...cc)
+      }
+      if (allChunks.length === meta.total) {
+        setCachedIndex(collectionId, allChunks).catch(() => {})
+      }
+    } else {
+      // 小文集（单文件）
+      const cached = await getCachedIndex(collectionId)
+      if (cached?.length === totalCount) {
+        const current = [...indexEntries.value]
+        for (const entry of cached) {
+          if (!current.find(e => e.id === entry.id)) current.push(entry)
+        }
+        indexEntries.value = current
+        overviewLoadProgress.value = indexEntries.value.length
+        return
+      }
+      const resp = await fetch('/poetry-data/index.' + collectionId + '.json')
+      if (!resp.ok) return
+      const data: IndexEntry[] = await resp.json()
+      // 合并去重
+      const current = [...indexEntries.value]
+      for (const entry of data) {
+        if (!current.find(e => e.id === entry.id)) current.push(entry)
+      }
+      indexEntries.value = current
+      overviewLoadProgress.value = indexEntries.value.length
+      setCachedIndex(collectionId, data).catch(() => {})
+    }
+    // 更新统计
+    injectStats(indexEntries.value)
   }
 
   async function loadCollectionFullIndex(collectionId: string) {

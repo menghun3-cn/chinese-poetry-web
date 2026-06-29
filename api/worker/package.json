@@ -1,0 +1,18 @@
+{
+  "name": "chinese-poetry-api",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "wrangler deploy --dry-run",
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev",
+    "setup": "node ../../scripts/deploy-d1.mjs"
+  },
+  "dependencies": {
+    "itty-router": "^5.0.18"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250601.0",
+    "wrangler": "^4.0.0"
+  }
+}

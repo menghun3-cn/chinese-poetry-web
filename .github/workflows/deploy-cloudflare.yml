@@ -1,4 +1,4 @@
-name: 部署到 Cloudflare Pages
+name: 部署到 Cloudflare Pages + Worker
 
 on:
   push:
@@ -6,65 +6,32 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-and-deploy:
+  deploy:
     runs-on: ubuntu-latest
     permissions:
       contents: read
       deployments: write
     steps:
-      - name: 检出代码与诗词子模块
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
-          submodules: recursive
           fetch-depth: 1
 
-      - name: 配置 Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
 
-      - name: 安装依赖
+      - name: 安装前端依赖
         run: npm ci
 
-      - name: 构建静态站点
+      - name: 安装 Worker 依赖
+        working-directory: api/worker
+        run: npm ci
+
+      - name: 构建前端
         run: npm run build
 
-      - name: 确保 Cloudflare Pages 项目存在
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          CLOUDFLARE_PROJECT_NAME: chinese-poetry-web
-        run: |
-          set -euo pipefail
-
-          api="https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/pages/projects/${CLOUDFLARE_PROJECT_NAME}"
-          status="$(curl -sS -o /tmp/pages-project.json -w "%{http_code}" \
-            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
-            -H "Content-Type: application/json" \
-            "${api}")"
-
-          if [ "${status}" = "200" ]; then
-            echo "Cloudflare Pages project exists: ${CLOUDFLARE_PROJECT_NAME}"
-            exit 0
-          fi
-
-          if [ "${status}" != "404" ]; then
-            cat /tmp/pages-project.json
-            exit 1
-          fi
-
-          echo "Creating Cloudflare Pages project: ${CLOUDFLARE_PROJECT_NAME}"
-          curl -sS -X POST \
-            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
-            -H "Content-Type: application/json" \
-            --data "{\"name\":\"${CLOUDFLARE_PROJECT_NAME}\",\"production_branch\":\"main\"}" \
-            "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/pages/projects" \
-            -o /tmp/pages-create.json
-
-          node -e "const result=require('/tmp/pages-create.json'); if (!result.success) { console.error(JSON.stringify(result, null, 2)); process.exit(1); }"
-
-      - name: 发布到 Cloudflare Pages
+      - name: 部署到 Cloudflare Pages
         uses: cloudflare/pages-action@v1
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -72,3 +39,10 @@ jobs:
           projectName: chinese-poetry-web
           directory: dist
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 部署 Worker API
+        working-directory: api/worker
+        run: npx wrangler deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

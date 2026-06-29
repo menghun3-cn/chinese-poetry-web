@@ -1,0 +1,22 @@
+name = "chinese-poetry-api"
+main = "src/index.ts"
+compatibility_date = "2025-06-01"
+compatibility_flags = ["nodejs_compat"]
+
+# D1 Database Binding
+[[d1_databases]]
+binding = "DB"
+database_name = "chinese-poetry-db"
+database_id = ""  # TODO: 创建 D1 后填写
+
+# Environment variables for caching
+[vars]
+CACHE_TTL = "300"
+CACHE_TTL_LONG = "86400"
+
+[env.production]
+
+# Build config
+[build]
+command = "npm run build"
+watch_dir = "src"

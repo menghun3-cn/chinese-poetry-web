@@ -1,30 +1,23 @@
-﻿import { defineStore } from 'pinia'
+import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import type { PoetryCatalog, PoetryFilters, PoetryItem } from '@/types/poetry'
-import { useTagsStore } from '@/stores/tags'
 
-export interface IndexEntry {
-  id: string
-  t: string
-  a: string
-  d: string
-  c: string
-  tg: string[]
-  r: string
-  e: string
-  l: number
-  sp: string
-}
+// ═══ API 基础路径 ═══════════════════════════════════════════
+const API_BASE = '/api'
+const DEFAULT_PAGE_SIZE = 20
 
-interface DetailEntry {
-  id: string
-  paragraphs: string[]
-}
-
-interface IndexMeta {
-  chunks: number
+interface SearchResult {
+  items: PoetryItem[]
   total: number
-  chunkSize: number
+  page: number
+  pageSize: number
+}
+
+interface ApiCatalog {
+  generatedAt: string
+  sourceRepository: string
+  total: number
+  collections: { id: string; name: string; dynasty: string; description: string; count: number }[]
 }
 
 const defaultFilters: PoetryFilters = {
@@ -34,101 +27,7 @@ const defaultFilters: PoetryFilters = {
   author: '',
 }
 
-const DB_NAME = 'poetry-cache'
-const DB_VERSION = 3
-
-async function openDB(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, DB_VERSION)
-    req.onupgradeneeded = () => {
-      const db = req.result
-      if (!db.objectStoreNames.contains('index')) db.createObjectStore('index')
-      if (!db.objectStoreNames.contains('meta')) db.createObjectStore('meta')
-    }
-    req.onsuccess = () => resolve(req.result)
-    req.onerror = () => reject(req.error)
-  })
-}
-
-function getCacheKey(collectionId: string, chunkIdx?: number): string {
-  return chunkIdx !== undefined ? '' + collectionId + '-chunk-' + chunkIdx : '' + collectionId + '-full'
-}
-
-async function getCachedIndex(collectionId: string): Promise<IndexEntry[] | null> {
-  try {
-    const db = await openDB()
-    return new Promise((resolve) => {
-      const tx = db.transaction('index', 'readonly')
-      const req = tx.objectStore('index').get(getCacheKey(collectionId, -1))
-      req.onsuccess = () => { resolve(req.result ?? null) }
-      req.onerror = () => { resolve(null) }
-      tx.oncomplete = () => db.close()
-    })
-  } catch {
-    return null
-  }
-}
-
-async function setCachedIndex(collectionId: string, data: IndexEntry[]): Promise<void> {
-  try {
-    const db = await openDB()
-    return new Promise((resolve) => {
-      const tx = db.transaction('index', 'readwrite')
-      tx.objectStore('index').put(data, getCacheKey(collectionId, -1))
-      tx.oncomplete = () => { db.close(); resolve() }
-    })
-  } catch { /* silent */ }
-}
-
-async function getCachedChunk(collectionId: string, chunkIdx: number): Promise<IndexEntry[] | null> {
-  try {
-    const db = await openDB()
-    return new Promise((resolve) => {
-      const tx = db.transaction('index', 'readonly')
-      const req = tx.objectStore('index').get(getCacheKey(collectionId, chunkIdx))
-      req.onsuccess = () => { resolve(req.result ?? null) }
-      req.onerror = () => { resolve(null) }
-      tx.oncomplete = () => db.close()
-    })
-  } catch {
-    return null
-  }
-}
-
-async function setCachedChunk(collectionId: string, chunkIdx: number, data: IndexEntry[]): Promise<void> {
-  try {
-    const db = await openDB()
-    return new Promise((resolve) => {
-      const tx = db.transaction('index', 'readwrite')
-      tx.objectStore('index').put(data, getCacheKey(collectionId, chunkIdx))
-      tx.oncomplete = () => { db.close(); resolve() }
-    })
-  } catch { /* silent */ }
-}
-
-const detailCache = new Map<string, string[]>()
-const DETAIL_CACHE_MAX = 50
-
-function cacheDetail(id: string, paragraphs: string[]) {
-  if (detailCache.size >= DETAIL_CACHE_MAX) {
-    const key = detailCache.keys().next().value
-    if (key) detailCache.delete(key)
-  }
-  detailCache.set(id, paragraphs)
-}
-
-function extractAuthors(entries: IndexEntry[]) {
-  const counter = new Map<string, number>()
-  for (const e of entries) {
-    if (e.a && e.a !== '\u6c5a\u540d') counter.set(e.a, (counter.get(e.a) || 0) + 1)
-  }
-  return [...counter.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 100)
-    .map(([name, count]) => ({ name, count }))
-}
-
-/** 甯歌浣滆€咃細localStorage 鎸佷箙鍖栫殑鐢ㄦ埛闃呰鍘嗗彶 */
+/** 常读作者：localStorage 持久化的用户阅读历史 */
 const LS_AUTHOR_FREQ = 'poetry:authorFreq'
 const MAX_AUTHORS = 10
 
@@ -143,7 +42,7 @@ function saveAuthorFreq(freq: Record<string, number>) {
   localStorage.setItem(LS_AUTHOR_FREQ, JSON.stringify(freq))
 }
 
-/** 鐑棬鏍囩锛歭ocalStorage 鎸佷箙鍖栫殑鐢ㄦ埛甯哥敤鏍囩 */
+/** 热门标签：localStorage 持久化的用户常用标签 */
 const LS_HOT_TAGS = 'poetry:hotTags'
 
 function readHotTags(): string[] {
@@ -158,371 +57,209 @@ function saveHotTags(tags: string[]) {
   localStorage.setItem(LS_HOT_TAGS, JSON.stringify(tags))
 }
 
-/**
- * 娓愯繘寮忓垎鐗囧姞杞界储寮曪細
- * 1. 鍏堝姞杞?meta.json 鑾峰彇鍒嗙墖淇℃伅
- * 2. 鍔犺浇棣栦釜鍒嗙墖鍚庣珛鍗宠繑鍥烇紙瀹屾垚锛夛紝鐢ㄦ埛鑳界珛鍗崇湅鍒板垪琛?
- * 3. 鍚庡彴閫愪釜鍔犺浇鍓╀綑鍒嗙墖骞惰拷鍔犲埌 indexEntries
- * 4. 缂撳瓨鍦?IndexedDB 涓紙姣忎釜鍒嗙墖鐙珛缂撳瓨锛?
- */
-async function loadShardedIndexProgressive(
-  collectionId: string,
-  indexEntries: { value: IndexEntry[] },
-  loadingMessage: { value: string },
-  loadingProgress: { value: number }
-): Promise<void> {
-  const metaResp = await fetch('/poetry-data/index.' + collectionId + '.meta.json')
-  if (!metaResp.ok) {
-    // 鏃犲垎鐗囩殑灏忓瀷鏂囬泦锛岀洿鎺ュ姞杞藉崟鏂囦欢
-    const singleResp = await fetch('/poetry-data/index.' + collectionId + '.json')
-    if (!singleResp.ok) throw new Error('Cannot load index: ' + collectionId)
-    const data: IndexEntry[] = await singleResp.json()
-    indexEntries.value = data
-    setCachedIndex(collectionId, data).catch(() => {})
-    return
-  }
-
-  const meta: IndexMeta = await metaResp.json()
-
-  if (meta.chunks <= 1) {
-    // 鍗曚釜鍒嗙墖锛岀洿鎺ュ姞杞?
-    const resp = await fetch('/poetry-data/index.' + collectionId + '.0.json')
-    if (!resp.ok) throw new Error('Chunk load failed: ' + collectionId + '.0')
-    const data: IndexEntry[] = await resp.json()
-    indexEntries.value = data
-    setCachedChunk(collectionId, 0, data).catch(() => {})
-    return
-  }
-
-  // 澶氬垎鐗囷細娓愯繘寮忓姞杞?
-  // 1) 鍏堝皾璇曠紦瀛?
-  const fullCached = await getCachedIndex(collectionId)
-  if (fullCached?.length === meta.total) {
-    indexEntries.value = fullCached
-    return
-  }
-
-  // 2) 閫愪釜灏濊瘯鐙珛鍒嗙墖缂撳瓨
-  const cachedChunks: IndexEntry[][] = []
-  let allCached = true
-  for (let i = 0; i < meta.chunks; i++) {
-    const cc = await getCachedChunk(collectionId, i)
-    if (cc) cachedChunks[i] = cc
-    else allCached = false
-  }
-  if (allCached) {
-    const merged: IndexEntry[] = []
-    for (const cc of cachedChunks) merged.push(...cc)
-    indexEntries.value = merged
-    setCachedIndex(collectionId, merged).catch(() => {})
-    return
-  }
-
-  // 3) 鍏堟妸宸叉湁缂撳瓨鐨勫垎鐗囧悎骞舵樉绀?
-  if (cachedChunks.some(Boolean)) {
-    const partial: IndexEntry[] = []
-    for (const cc of cachedChunks) if (cc) partial.push(...cc)
-    indexEntries.value = partial
-  }
-
-  // 4) 鍔犺浇棣栦釜鍒嗙墖锛堜紭鍏堝姞杞斤級
-  const firstChunkIdx = cachedChunks.findIndex(c => !c)
-  const startIdx = firstChunkIdx >= 0 ? firstChunkIdx : 0
-  if (!cachedChunks[startIdx]) {
-    loadingMessage.value = '' + collectionId + ' 索引加载中（' + (startIdx + 1) + '/' + meta.chunks + '）'
-    const resp = await fetch('/poetry-data/index.' + collectionId + '.' + startIdx + '.json')
-    if (resp.ok) {
-      const chunk: IndexEntry[] = await resp.json()
-      const current = [...indexEntries.value]
-      const offset = startIdx * meta.chunkSize
-      for (let j = 0; j < chunk.length; j++) {
-        current[offset + j] = chunk[j]
-      }
-      indexEntries.value = current.filter(Boolean)
-      setCachedChunk(collectionId, startIdx, chunk).catch(() => {})
-    }
-  }
-
-  // 5) 鍚庡彴閫愪釜鍔犺浇鍓╀綑鍒嗙墖
-  const remaining = []
-  for (let i = 0; i < meta.chunks; i++) {
-    if (!cachedChunks[i]) remaining.push(i)
-  }
-  for (const idx of remaining) {
-    if (idx === startIdx) continue // 宸插姞杞?
-    loadingMessage.value = '' + collectionId + ' 索引加载中（' + (idx + 1) + '/' + meta.chunks + '）'
-    try {
-      const resp = await fetch('/poetry-data/index.' + collectionId + '.' + idx + '.json')
-      if (!resp.ok) continue
-      const chunk: IndexEntry[] = await resp.json()
-      const current = [...indexEntries.value]
-      const offset = idx * meta.chunkSize
-      for (let j = 0; j < chunk.length; j++) {
-        current[offset + j] = chunk[j]
-      }
-      indexEntries.value = current.filter(Boolean)
-      setCachedChunk(collectionId, idx, chunk).catch(() => {})
-    } catch { /* skip failed chunk */ }
-  }
-
-  // 6) 缂撳瓨瀹屾暣绱㈠紩
-  const full = indexEntries.value
-  if (full.length === meta.total) {
-    setCachedIndex(collectionId, full).catch(() => {})
-  }
+function readFavorites() {
+  if (typeof localStorage === 'undefined') return []
+  try {
+    const parsed = JSON.parse(localStorage.getItem('poetry:favorites') ?? '[]')
+    return Array.isArray(parsed) ? parsed.filter((i) => typeof i === 'string') : []
+  } catch { return [] }
 }
 
+// ═══ API 封装 ════════════════════════════════════════════════
+async function fetchApi<T>(path: string, params?: Record<string, string>): Promise<T> {
+  const url = new URL(API_BASE + path, location.origin)
+  if (params) {
+    for (const [key, value] of Object.entries(params)) {
+      if (value) url.searchParams.set(key, value)
+    }
+  }
+  const resp = await fetch(url.toString())
+  if (!resp.ok) throw new Error('API Error: ' + resp.statusText)
+  return resp.json()
+}
+
+// ═══ Store ════════════════════════════════════════════════════
 export const usePoetryStore = defineStore('poetry', () => {
   const catalog = ref<PoetryCatalog | null>(null)
-  const indexEntries = ref<IndexEntry[]>([])
-  const isOverviewMode = ref(true)
+  const collections = computed(() => catalog.value?.collections ?? [])
+  const totalCount = computed(() => catalog.value?.total ?? 0)
   const currentCollectionId = ref('all')
-  const loading = ref(false)
-  const loadingMessage = ref('\u6b63\u5728\u52a0\u8f7d')
+  const loading = ref(true)
+  const loadingMessage = ref('正在加载诗词数据')
   const loadingProgress = ref(0)
-  const error = ref('')
-  const selectedId = ref('')
-  const topAuthorsList = ref<{ name: string; count: number }[]>([])
-  const topTagsList = ref<string[]>([])
-  const hasFullCollectionLoaded = ref(false)
-  const frequentAuthors = ref<{ name: string; count: number }[]>(
-  Object.entries(readAuthorFreq())
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, MAX_AUTHORS)
-    .map(([name, count]) => ({ name, count }))
-)
-  const hotTags = ref<string[]>(readHotTags())
+  const error = ref<string | null>(null)
 
+  // 当前搜索结果
+  const items = ref<PoetryItem[]>([])
+  const totalResults = ref(0)
+  const currentPage = ref(1)
+  const pageSize = ref(DEFAULT_PAGE_SIZE)
+
+  // 筛选状态
   const filters = ref<PoetryFilters>({ ...defaultFilters })
+  const selectedId = ref('')
+  const selectedItem = ref<PoetryItem | null>(null)
 
+  // 收藏
   const favorites = ref<string[]>(readFavorites())
 
+  // 常读作者和热门标签
+  const frequentAuthors = ref<{ name: string; count: number }[]>(Object.entries(readAuthorFreq())
+    .map(([name, count]) => ({ name, count }))
+  )
+  const hotTags = ref<string[]>(readHotTags())
+  const topAuthorsList = ref<{ name: string; count: number }[]>([])
+  const topTagsList = ref<string[]>([])
 
-  const items = computed<PoetryItem[]>(() =>
-    indexEntries.value.map((e) => ({
-      id: e.id,
-      title: e.t,
-      author: e.a,
-      dynasty: e.d,
-      collection: catalog.value?.collections.find((c) => c.id === e.c)?.name ?? '',
-      collectionId: e.c,
-      rhythmic: e.r,
-      tags: e.tg,
-      paragraphs: detailCache.get(e.id) ?? [],
-      excerpt: e.e,
-      length: e.l,
-      sourcePath: e.sp,
-    })),
+  // 计算属性
+  const filteredItems = computed(() => items.value)
+  const isOverviewMode = computed(() => true)
+  const isUsingOverview = computed(() => true)
+  const hasFullCollectionLoaded = computed(() => true)
+  const indexEntries = computed(() => [] as any[])
+  const favoriteItems = computed(() =>
+    items.value.filter((item) => favorites.value.includes(item.id))
   )
 
-  const collections = computed(() => catalog.value?.collections ?? [])
-  const isUsingOverview = computed(() => isOverviewMode.value)
-  const totalCount = computed(() => catalog.value?.total ?? 0)
-
-  const favoriteItems = computed<PoetryItem[]>(() =>
-    items.value.filter((item) => favorites.value.includes(item.id)),
-  )
-
-  const selectedItem = computed<PoetryItem | null>(() => {
-    return items.value.find((item) => item.id === selectedId.value) ?? null
-  })
-
-  const filteredItems = computed(() => {
-    const f = filters.value
-    const all = items.value
-    if (!f.keyword && !f.author && !f.tags.length && (f.collectionId === 'all' || f.collectionId === currentCollectionId.value)) return all
-    const kw = f.keyword ? normalize(f.keyword) : ''
-    const authorQ = f.author ? normalize(f.author) : ''
-    const tags = f.tags
-    return all.filter((item) => {
-      if (kw && !normalize(item.title).includes(kw) && !normalize(item.author).includes(kw) && !normalize(item.excerpt).includes(kw)) return false
-      if (tags.length && !tags.some((tag) => item.tags.includes(tag))) return false
-      if (authorQ && !normalize(item.author).includes(authorQ)) return false
-      return true
-    })
-  })
-
+  // 初始化
   async function loadCatalog() {
     loading.value = true
-    loadingMessage.value = '\u6b63\u5728\u52a0\u8f7d\u8bd7\u8bcd\u7d22\u5f15'
+    loadingMessage.value = '正在加载诗词数据'
     loadingProgress.value = 10
-    error.value = ''
+    error.value = null
+
     try {
-      // 1) 鍏堝皾璇曞唴鑱?meta 鏁版嵁锛堟瀯寤烘椂娉ㄥ叆锛?
-      const inlineMetaEl = document.getElementById('poetry-meta-data')
-      if (inlineMetaEl) {
-        try {
-          const meta: PoetryCatalog = JSON.parse(inlineMetaEl.textContent || '{}')
-          if (meta.collections?.length) catalog.value = meta
-        } catch { /* fallback to network */ }
-      }
-      if (!catalog.value) {
-        loadingProgress.value = 20
-        const r = await fetch('/poetry-data/meta.json')
-        if (!r.ok) throw new Error('HTTP ' + r.status)
-        catalog.value = await r.json() as PoetryCatalog
-      }
+      const [catalogData, searchData] = await Promise.all([
+        fetchApi<ApiCatalog>('/catalog'),
+        fetchApi<SearchResult>('/search', { page: '1', page_size: String(DEFAULT_PAGE_SIZE) }),
+      ])
 
-      loadingProgress.value = 30
+      loadingProgress.value = 60
 
-      // 2) 鍏堝皾璇曞唴鑱旀瑙堟暟鎹€斺€旂寮€
-      const inlineOverviewEl = document.getElementById('poetry-overview-data')
-      if (inlineOverviewEl) {
-        try {
-          const inlineData: IndexEntry[] = JSON.parse(inlineOverviewEl.textContent || '[]')
-          if (inlineData.length > 0) {
-            indexEntries.value = inlineData
-            injectStats(inlineData)
-            if (!selectedId.value) selectedId.value = inlineData[0]?.id ?? ''
-            await ensureDetail(selectedId.value)
-            loading.value = false
-            loadingProgress.value = 100
-            // 鍚庡彴缁х画鍔犺浇瀹屾暣姒傝
-            // loadFullOverviewInBackground()
-            return
-          }
-        } catch { /* fallback */ }
+      catalog.value = {
+        generatedAt: catalogData.generatedAt,
+        sourceRepository: catalogData.sourceRepository,
+        total: catalogData.total,
+        collections: catalogData.collections.map(c => ({ ...c, sources: [] })),
+        items: [],
       }
 
-      // 3) 灏濊瘯 IndexedDB 缂撳瓨鐨勬瑙?
-      loadingProgress.value = 40
-      loadingMessage.value = '\u6b63\u5728\u52a0\u8f7d\u8bd7\u8bcd\u6982\u89c8'
-      const r2 = await fetch('/poetry-data/index.overview.json')
-      if (!r2.ok) throw new Error('HTTP ' + r2.status)
-      loadingProgress.value = 70
-      const overview: IndexEntry[] = await r2.json()
-      indexEntries.value = overview
-      injectStats(overview)
-      loadingProgress.value = 90
-      if (!selectedId.value) selectedId.value = overview[0]?.id ?? ''
-      await ensureDetail(selectedId.value)
-    } catch (err) {
-      error.value = err instanceof Error ? err.message : String(err)
-    } finally {
-      loading.value = false
+      items.value = searchData.items
+      totalResults.value = searchData.total
       loadingProgress.value = 100
+      loading.value = false
+
+      // 默认选中第一首
+      if (searchData.items.length > 0) {
+        selectItem(searchData.items[0].id)
+      }
+    } catch (e: any) {
+      error.value = e.message || '加载失败'
+      loading.value = false
     }
   }
 
-  async function loadCollectionFullIndex(collectionId: string) {
-    if (!catalog.value) return
+  // 搜索
+  async function updateFilters(newFilters: Partial<PoetryFilters>) {
+    filters.value = { ...filters.value, ...newFilters }
     loading.value = true
-    loadingMessage.value = '\u6b63\u5728\u52a0\u8f7d\u6587\u96c6\u6570\u636e'
-    loadingProgress.value = 10
-    error.value = ''
+    loadingMessage.value = '正在搜索诗词'
+    currentPage.value = 1
+
     try {
-      currentCollectionId.value = collectionId
-      isOverviewMode.value = false
-      hasFullCollectionLoaded.value = false
-
-      // 娓愯繘寮忓垎鐗囧姞杞解€斺€斿厛鍔犺浇棣栦釜鍒嗙墖灏辨樉绀猴紝鍚庡彴缁х画鍔犺浇鍓╀綑
-      await loadShardedIndexProgressive(collectionId, indexEntries, loadingMessage, loadingProgress)
-      // 姝ゆ椂 indexEntries 宸叉湁鑷冲皯棣栦釜鍒嗙墖鏁版嵁锛堟垨鍏ㄩ噺宸茬紦瀛橈級
-      hasFullCollectionLoaded.value = true
-
-      // 鏇存柊缁熻锛堝熀浜庡凡鍔犺浇鐨勯儴鍒嗭級
-      injectStats(indexEntries.value)
-
-      if (!selectedId.value || !indexEntries.value.find(e => e.id === selectedId.value)) {
-        selectedId.value = indexEntries.value[0]?.id ?? ''
+      const params: Record<string, string> = {
+        page: '1',
+        page_size: String(pageSize.value),
       }
-      await ensureDetail(selectedId.value)
-    } catch (err) {
-      console.error('loadCollectionFullIndex failed:', err)
-      error.value = err instanceof Error ? err.message : String(err)
-    } finally {
+      if (filters.value.keyword) params.keyword = filters.value.keyword
+      if (filters.value.author) params.author = filters.value.author
+      if (filters.value.collectionId && filters.value.collectionId !== 'all') {
+        params.collection_id = filters.value.collectionId
+      }
+
+      const data = await fetchApi<SearchResult>('/search', params)
+      items.value = data.items
+      totalResults.value = data.total
       loading.value = false
-      loadingProgress.value = 100
+
+      // 自动选择第一首
+      if (data.items.length > 0 && !selectedItem.value) {
+        selectItem(data.items[0].id)
+      }
+    } catch (e: any) {
+      error.value = e.message || '搜索失败'
+      loading.value = false
     }
   }
 
-  function switchToOverview() {
-    isOverviewMode.value = true
-    currentCollectionId.value = 'all'
-    hasFullCollectionLoaded.value = false
-    // 如果后台全量加载已完成，直接使用现有 indexEntries，无需重新加载
-    // if (_bgLoaded && indexEntries.value.length > 20000) return
-    // 否则重新加载概览（内联数据秒开）
-    loadCatalog()
-  }
-
-  function injectStats(entries: IndexEntry[]) {
-    const counts = new Map<string, number>()
-    for (const e of entries) {
-      if (e.tg) for (const tag of e.tg) counts.set(tag, (counts.get(tag) ?? 0) + 1)
-    }
-    const tagsStore = useTagsStore()
-    tagsStore.setGlobalCounts(counts)
-    topAuthorsList.value = extractAuthors(entries)
-    topTagsList.value = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 50).map(([k]) => k)
-  }
-
-  async function ensureDetail(itemId: string): Promise<string[]> {
-    const cached = detailCache.get(itemId)
-    if (cached) {
-      detailCache.delete(itemId)
-      detailCache.set(itemId, cached)
-      return cached
-    }
+  async function loadMore() {
+    if (currentPage.value * pageSize.value >= totalResults.value) return
+    loading.value = true
+    currentPage.value++
     try {
-      const colId = indexEntries.value.find((e) => e.id === itemId)?.c
-      if (!colId) return []
-      const colItems = indexEntries.value.filter((e) => e.c === colId)
-      const idx = colItems.findIndex((e) => e.id === itemId)
-      if (idx === -1) return []
-      const chunkIdx = Math.floor(idx / 2000)
-      const r = await fetch('/poetry-data/details/' + colId + '-' + chunkIdx + '.json')
-      if (!r.ok) return []
-      const chunk: DetailEntry[] = await r.json()
-      const found = chunk.find((d) => d.id === itemId)
-      if (found) { cacheDetail(itemId, found.paragraphs); return found.paragraphs }
-    } catch { /* silent */ }
-    return []
+      const params: Record<string, string> = {
+        page: String(currentPage.value),
+        page_size: String(pageSize.value),
+      }
+      if (filters.value.keyword) params.keyword = filters.value.keyword
+      if (filters.value.author) params.author = filters.value.author
+      if (filters.value.collectionId && filters.value.collectionId !== 'all') {
+        params.collection_id = filters.value.collectionId
+      }
+      const data = await fetchApi<SearchResult>('/search', params)
+      items.value = [...items.value, ...data.items]
+      loading.value = false
+    } catch {
+      currentPage.value--
+      loading.value = false
+    }
   }
 
-  function selectItem(id: string) {
-    const entry = indexEntries.value.find((e) => e.id === id)
+  // 选择诗词
+  async function selectItem(id: string) {
     selectedId.value = id
-    ensureDetail(id)
-    if (!entry) return
-    // 璁板綍甯歌浣滆€?
-    if (entry.a && entry.a !== '\u6c5a\u540d') {
+    const existing = items.value.find((i) => i.id === id)
+    if (existing) selectedItem.value = existing
+    const detail = await ensureDetail(id)
+    if (detail) selectedItem.value = detail
+
+    if (selectedItem.value?.author) {
+      const authorName = selectedItem.value.author
       const freq = readAuthorFreq()
-      freq[entry.a] = (freq[entry.a] || 0) + 1
+      freq[authorName] = (freq[authorName] || 0) + 1
       saveAuthorFreq(freq)
       frequentAuthors.value = Object.entries(freq)
         .sort((a, b) => b[1] - a[1])
         .slice(0, MAX_AUTHORS)
         .map(([name, count]) => ({ name, count }))
     }
-    // 璁板綍鐑棬鏍囩
-    if (entry.tg && entry.tg.length > 0) {
+
+    if (selectedItem.value?.tags?.length) {
       const tags = readHotTags()
-      const tagSet = new Set(tags)
-      for (const t of entry.tg) { tagSet.add(t) }
-      const updated = [...tagSet].slice(0, 20)
-      saveHotTags(updated)
-      hotTags.value = updated
+      for (const tag of selectedItem.value.tags) {
+        if (!tags.includes(tag)) {
+          tags.unshift(tag)
+          if (tags.length > 20) tags.pop()
+        }
+      }
+      saveHotTags(tags)
+      hotTags.value = tags
     }
   }
 
-  function updateFilters(patch: Partial<PoetryFilters>) {
-    const prevCol = filters.value.collectionId
-    filters.value = { ...filters.value, ...patch }
-    if (patch.collectionId && patch.collectionId !== prevCol && patch.collectionId !== 'all') {
-      loadCollectionFullIndex(patch.collectionId)
-    } else if (patch.collectionId === 'all' && !isOverviewMode.value) {
-      switchToOverview()
+  async function ensureDetail(id: string): Promise<PoetryItem | null> {
+    if (selectedItem.value?.id === id && selectedItem.value.paragraphs.length > 0) {
+      return selectedItem.value
     }
-    selectedId.value = filteredItems.value[0]?.id ?? selectedId.value
-    if (selectedId.value) ensureDetail(selectedId.value)
-  }
-
-  function resetFilters() {
-    filters.value = { ...defaultFilters }
-    selectedId.value = items.value[0]?.id ?? ''
-    if (selectedId.value) ensureDetail(selectedId.value)
-    if (!isOverviewMode.value) switchToOverview()
+    try {
+      const detail = await fetchApi<PoetryItem>('/detail', { id })
+      if (detail) {
+        const idx = items.value.findIndex((i) => i.id === id)
+        if (idx >= 0) items.value[idx] = { ...items.value[idx], paragraphs: detail.paragraphs }
+        selectedItem.value = detail
+      }
+      return detail
+    } catch { return null }
   }
 
   function toggleFavorite(id: string) {
@@ -549,48 +286,25 @@ export const usePoetryStore = defineStore('poetry', () => {
     saveHotTags(hotTags.value)
   }
 
+  function resetFilters() {
+    filters.value = { ...defaultFilters }
+    updateFilters({})
+  }
+
+  async function loadCollectionFullIndex(collectionId: string) {
+    currentCollectionId.value = collectionId
+    await updateFilters({ collectionId })
+  }
+
+  function switchToOverview() { /* no-op */ }
+
   return {
     catalog, collections, currentCollectionId, error, favorites, favoriteItems,
     filteredItems, filters, hasFullCollectionLoaded, indexEntries,
     isOverviewMode, isUsingOverview, items, loading, loadingMessage, loadingProgress,
     selectedId, selectedItem, topAuthorsList, topTagsList, totalCount,
     frequentAuthors, hotTags, removeFrequentAuthor, removeHotTag,
-    ensureDetail, loadCatalog, loadCollectionFullIndex, resetFilters, selectItem,
-    switchToOverview, toggleFavorite, updateFilters,
+    ensureDetail, loadCatalog, loadCollectionFullIndex, loadMore,
+    resetFilters, selectItem, switchToOverview, toggleFavorite, updateFilters,
   }
 })
-
-
-function buildItems(entries: any[]): PoetryItem[] {
-  return entries.map(function(e: any) {
-    return {
-      id: e.id,
-      title: e.t || "无题",
-      author: e.a || "佚名",
-      dynasty: e.d || "",
-      collection: "",
-      collectionId: e.c || "",
-      rhythmic: e.r || "",
-      tags: e.tg || [],
-      paragraphs: [],
-      excerpt: e.e || "",
-      length: e.l || 0,
-      sourcePath: e.sp || "",
-    }
-  })
-}
-
-function normalize(value: string | undefined) {
-  return (value ?? '').trim().toLocaleLowerCase('zh-CN')
-}
-
-function readFavorites() {
-  if (typeof localStorage === 'undefined') return []
-  try {
-    const parsed = JSON.parse(localStorage.getItem('poetry:favorites') ?? '[]')
-    return Array.isArray(parsed) ? parsed.filter((i) => typeof i === 'string') : []
-  } catch { return [] }
-}
-
-
-

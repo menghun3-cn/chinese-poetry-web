@@ -4,15 +4,14 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "predev": "node scripts/generate-poetry-data.mjs",
     "dev": "vite",
-    "prebuild": "node scripts/generate-poetry-data.mjs",
-    "build": "vue-tsc -b && vite build",
+    "build": "vite build",
     "preview": "vite preview",
     "typecheck": "vue-tsc -b",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "setup": "cd api/worker && npm run setup"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.1.6",

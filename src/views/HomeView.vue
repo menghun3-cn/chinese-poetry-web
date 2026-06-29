@@ -2,23 +2,20 @@
   <div class="flex h-screen flex-col overflow-hidden">
     <PoetryFiltersCompact />
     
-    <!-- 首次加载骨架屏 -->
+    <!-- 骨架屏 - 首次加载时显示 -->
     <SkeletonLoader v-if="store.loading" :progress="store.loadingProgress" :message="store.loadingMessage" class="flex-1" />
-
-    
-    
 
     <StateNotice v-else-if="store.error" title="索引加载失败" :description="store.error" tone="danger" />
     
     <template v-else>
-      <StateNotice v-if="!store.filteredItems.length" title="没有匹配的作品" description="可以减少关键词，或切换到全部文集后重新检索。">
+      <StateNotice v-if="!store.filteredItems.length" title="没有匹配的作品" description="可以减少关键词，或切换到全部文集后重新搜索">
         <AppButton variant="secondary" @click="store.resetFilters">清空筛选</AppButton>
       </StateNotice>
       
       <div v-else class="relative flex flex-1 overflow-hidden">
-        <!-- 左侧篇目列表（默认收起） -->
+        <!-- 左侧篇目列表 -->
         <aside class="absolute inset-y-0 left-0 z-30 flex flex-col overflow-hidden border-r border-[var(--color-border)] bg-[var(--color-surface)] shadow-lg transition-all duration-300 ease-out"
-          :class="showSidebar ? 'w-[280px] lg:w-[320px]' : 'w-0 border-r-0 shadow-none'">
+          :class="showSidebar ? 'w-[260px] lg:w-[300px]' : 'w-0 border-r-0 shadow-none'">
           <div class="flex shrink-0 items-center justify-between border-b border-[var(--color-border)] px-3 py-2.5">
             <span class="text-xs font-medium text-[var(--color-text-secondary)]">篇目（{{ store.filteredItems.length }}）</span>
             <AppButton variant="secondary" size="sm" @click="showSidebar = false"><X class="size-3.5" /></AppButton>
@@ -29,7 +26,7 @@
         <!-- 主阅读区 -->
         <div class="flex min-w-0 flex-1 flex-col">
           <!-- 顶栏 -->
-          <header class="flex shrink-0 items-center gap-2 border-b border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1.5">
+          <header v-if="store.selectedItem" class="flex shrink-0 items-center gap-2 border-b border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1.5">
             <button class="flex size-8 items-center justify-center rounded-lg text-[var(--color-text-muted)] hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text)]"
               :title="showSidebar ? '收起列表' : '展开列表'"
               @click="showSidebar = !showSidebar">
@@ -37,12 +34,12 @@
               <PanelLeftClose v-else class="size-4" />
             </button>
             <div class="min-w-0 flex-1 text-center sm:text-left">
-              <h1 class="truncate text-sm font-semibold leading-tight">{{ store.selectedItem?.title }}</h1>
-              <p class="truncate text-[11px] text-[var(--color-text-muted)]">{{ store.selectedItem?.dynasty }} · {{ store.selectedItem?.author }} · {{ store.selectedItem?.collection }}</p>
+              <h1 class="truncate text-sm font-semibold leading-tight">{{ store.selectedItem.title }}</h1>
+              <p class="truncate text-[11px] text-[var(--color-text-muted)]">{{ store.selectedItem.dynasty }} · {{ store.selectedItem.author }} · {{ store.selectedItem.collection }}</p>
             </div>
             <div class="flex shrink-0 items-center gap-1.5">
               <AppButton variant="secondary" size="sm" @click="copyPoem"><CopyCheck v-if="copied" class="size-3.5" /><Copy v-else class="size-3.5" /></AppButton>
-              <AppButton :variant="isFavorite ? 'primary' : 'secondary'" size="sm" @click="store.toggleFavorite(store.selectedItem!.id)">
+              <AppButton :variant="isFavorite ? 'primary' : 'secondary'" size="sm" @click="store.toggleFavorite(store.selectedItem.id)">
                 <Star class="size-3.5" :class="isFavorite ? 'fill-white' : ''" />
               </AppButton>
               <AppButton variant="secondary" size="sm" @click="toggleCollectionList"><BookMarked class="size-3.5" /></AppButton>
@@ -53,7 +50,7 @@
           <PoetryReaderFullViewport class="flex-1 min-h-0" />
 
           <!-- 底部导航 -->
-          <nav class="flex shrink-0 items-center justify-between border-t border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1.5">
+          <nav v-if="store.selectedItem" class="flex shrink-0 items-center justify-between border-t border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1.5">
             <button class="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-[var(--color-text-secondary)] transition hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text)] disabled:opacity-30 disabled:pointer-events-none"
               :disabled="!prevItem" @click="navigateTo(prevItem!.id)">
               <ChevronLeft class="size-3.5" /><span class="hidden sm:inline truncate max-w-[120px]">{{ prevItem?.title || '无' }}</span>
@@ -89,7 +86,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { BookMarked, ChevronLeft, ChevronRight, Copy, CopyCheck, List, PanelLeftClose, PanelLeftOpen, Star, X } from 'lucide-vue-next'
 import type { PoetryItem } from '@/types/poetry'
 import PoetryFiltersCompact from '@/components/PoetryFiltersCompact.vue'
@@ -101,17 +98,23 @@ import AppButton from '@/components/ui/AppButton.vue'
 import { usePoetryStore } from '@/stores/poetry'
 
 const store = usePoetryStore()
-const showSidebar = ref(false)  // 默认收起篇目列表
+const showSidebar = ref(false)
 const showCollections = ref(false)
 const copied = ref(false)
 
 onMounted(() => {
-  store.loadCatalog()
   window.addEventListener('keydown', handleKeydown)
 })
 
 onUnmounted(() => {
   window.removeEventListener('keydown', handleKeydown)
+})
+
+// 自动选择第一首诗当数据加载完成
+watch(() => store.filteredItems.length, (len) => {
+  if (len > 0 && !store.selectedItem) {
+    store.selectItem(store.filteredItems[0].id)
+  }
 })
 
 const currentIndex = computed(() => store.filteredItems.findIndex((item) => item.id === store.selectedId))

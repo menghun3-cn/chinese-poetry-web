@@ -1,5 +1,4 @@
-﻿import tailwindcss from "@tailwindcss/vite"
-import { inlinePoetryMeta } from "./vite-plugins/inline-meta"
+import tailwindcss from "@tailwindcss/vite"
 import vue from "@vitejs/plugin-vue"
 import { VitePWA } from "vite-plugin-pwa"
 import { fileURLToPath, URL } from "node:url"
@@ -7,26 +6,25 @@ import { defineConfig } from "vite"
 
 export default defineConfig({
   plugins: [
-    inlinePoetryMeta(),
     vue(),
     tailwindcss(),
     VitePWA({
       registerType: "autoUpdate",
       workbox: {
         globPatterns: ["**/*.{js,css,html,json,svg,ico,png,woff2}"],
-        // 索引分片文件最大约5.7MB，提升限制以允许预缓存
-        maximumFileSizeToCacheInBytes: 10 * 1024 * 1024, // 10MB
-        // 诗词数据：网络优先，缓存后备
+        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
+        // API 请求：网络优先，缓存后备（利用 Cloudflare 端缓存）
         runtimeCaching: [
           {
-            urlPattern: /\/poetry-data\/.*\.json$/,
+            urlPattern: /\/api\/.*/,
             handler: "NetworkFirst",
             options: {
-              cacheName: "poetry-data",
+              cacheName: "poetry-api",
               expiration: {
-                maxEntries: 300,
-                maxAgeSeconds: 60 * 60 * 24 * 30, // 30 天
+                maxEntries: 100,
+                maxAgeSeconds: 60 * 60 * 2, // 2 小时
               },
+              networkTimeoutSeconds: 5,
               cacheableResponse: {
                 statuses: [0, 200],
               },
